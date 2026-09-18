@@ -134,28 +134,20 @@ bool convert_driver<vector<wtf_ptr<HwmonSensorDriver>>>(
 
 	auto hwmon_iface = std::make_shared<HwmonInterface<SensorDriver>>(path, name, model, indices);
 
-	if (indices) {
-		if (correction && correction->size() != indices->size())
-			throw YamlError(
-				get_mark_compat(node[kw_indices]),
-				MSG_CONF_CORRECTION_LEN(path, correction->size(), indices->size())
-			);
-	}
-	else {
-		if (optional)
-			throw YamlError(
-				get_mark_compat(node),
-				"An optional hwmon sensor must have an '"+kw_indices+"' entry so thinkfan knows how many temperatures to expect."
-			);
-		if (correction && correction->size() != 1)
-			throw YamlError(
-				get_mark_compat(node[kw_correction]),
-				"If no indices are specified, the '"+kw_hwmon+"' path must refer to a specific temp*_input file "
-				"and therefore the length of '"+kw_correction+"' must be 1"
-			);
-	}
+	if (!indices && optional)
+		throw YamlError(
+			get_mark_compat(node),
+			"An optional hwmon sensor must have an '"+kw_indices+"' entry so thinkfan knows how many temperatures to expect."
+		);
 
-	for (unsigned int i = 0; i < (indices ? indices->size() : 1); ++i) {
+	const size_t input_count = indices ? indices->size() : hwmon_iface->lookup_all().size();
+	if (correction && correction->size() != input_count)
+		throw YamlError(
+			get_mark_compat(node[kw_correction]),
+			MSG_CONF_CORRECTION_LEN(path, correction->size(), input_count)
+		);
+
+	for (unsigned int i = 0; i < input_count; ++i) {
 		wtf_ptr<HwmonSensorDriver> drv(new HwmonSensorDriver(
 			hwmon_iface,
 			optional,
@@ -326,7 +318,8 @@ bool convert_driver<vector<wtf_ptr<HwmonFanDriver>>>(const Node &node, vector<wt
 			"An optional hwmon fan must have an \"indices\" entry so thinkfan knows how many temperatures to expect."
 		);
 
-	for (unsigned int i = 0; i < (indices ? indices->size() : 1); ++i)
+	const size_t input_count = indices ? indices->size() : hwmon_iface->lookup_all().size();
+	for (unsigned int i = 0; i < input_count; ++i)
 		fans.push_back(wtf_ptr<HwmonFanDriver>(new HwmonFanDriver(hwmon_iface, optional, max_errors)));
 
 	return true;

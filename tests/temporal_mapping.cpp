@@ -374,8 +374,10 @@ void test_yaml_duration_syntax()
 		std::ofstream config(path);
 		config << "sensors:\n"
 			<< "  - hwmon: /tmp/thinkfan-temp\n"
+			<< "    indices: [1]\n"
 			<< "fans:\n"
 			<< "  - hwmon: /tmp/thinkfan-fan\n"
+			<< "    indices: [1]\n"
 			<< "levels:\n"
 			<< "  - speed: 0\n"
 			<< "    upper_limit: 80\n"
