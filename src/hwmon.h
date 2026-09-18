@@ -42,6 +42,7 @@ public:
 
 private:
 	static int filter_driver_file(const struct dirent *entry);
+	static opt<unsigned int> index_from_filename(const string &filename);
 	static vector<string> find_files(const string &path, const vector<unsigned int> &indices);
 	static string filename(unsigned int index);
 

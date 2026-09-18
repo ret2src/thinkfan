@@ -24,9 +24,12 @@
 #include "error.h"
 
 #include <fnmatch.h>
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cassert>
 #include <cstring>
+#include <limits>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <filesystem>
@@ -34,6 +37,37 @@
 namespace thinkfan {
 
 namespace filesystem = std::filesystem;
+
+
+static opt<unsigned int> parse_indexed_filename(
+	const string &filename,
+	const string &prefix,
+	const string &suffix
+)
+{
+	if (filename.size() <= prefix.size() + suffix.size()
+			|| filename.compare(0, prefix.size(), prefix) != 0
+			|| filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) != 0)
+		return nullopt;
+
+	const string index_string = filename.substr(
+		prefix.size(), filename.size() - prefix.size() - suffix.size()
+	);
+	for (unsigned char c : index_string)
+		if (!std::isdigit(c))
+			return nullopt;
+
+	try {
+		size_t end = 0;
+		const unsigned long long index = std::stoull(index_string, &end);
+		if (end != index_string.size() || index > std::numeric_limits<unsigned int>::max())
+			return nullopt;
+		return static_cast<unsigned int>(index);
+	}
+	catch (const std::out_of_range &) {
+		return nullopt;
+	}
+}
 
 
 static int filter_hwmon_dirs(const struct dirent *entry)
@@ -52,20 +86,26 @@ static int filter_subdirs(const struct dirent *entry)
 
 
 template<>
+opt<unsigned int> HwmonInterface<SensorDriver>::index_from_filename(const string &filename)
+{ return parse_indexed_filename(filename, "temp", "_input"); }
+
+template<>
+opt<unsigned int> HwmonInterface<FanDriver>::index_from_filename(const string &filename)
+{ return parse_indexed_filename(filename, "pwm", ""); }
+
+template<>
 int HwmonInterface<SensorDriver>::filter_driver_file(const struct dirent *entry)
 {
-	int idx;
 	return (entry->d_type == DT_REG || entry->d_type == DT_LNK)
-		&& ::sscanf(entry->d_name, "temp%d_input", &idx) == 1
+		&& HwmonInterface<SensorDriver>::index_from_filename(entry->d_name).has_value()
 	;
 }
 
 template<>
 int HwmonInterface<FanDriver>::filter_driver_file(const struct dirent *entry)
 {
-	int idx;
 	return (entry->d_type == DT_REG || entry->d_type == DT_LNK)
-		&& ::sscanf(entry->d_name, "pwm%d", &idx) == 1
+		&& HwmonInterface<FanDriver>::index_from_filename(entry->d_name).has_value()
 	;
 }
 
@@ -281,6 +321,13 @@ string HwmonInterface<HwmonT>::lookup()
 		}
 		else {
 			vector<string> paths = dir_entries<filter_driver_file>(path);
+			std::sort(paths.begin(), paths.end(), [](const string &lhs, const string &rhs) {
+				return HwmonInterface<HwmonT>::index_from_filename(
+					filesystem::path(lhs).filename().string()
+				).value() < HwmonInterface<HwmonT>::index_from_filename(
+					filesystem::path(rhs).filename().string()
+				).value();
+			});
 			found_paths_.swap(paths);
 		}
 
