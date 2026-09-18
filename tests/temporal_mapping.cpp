@@ -40,6 +40,25 @@ protected:
 	string type_name() const override { return "test fan"; }
 };
 
+class InspectableTpFan : public TpFanDriver {
+public:
+	using TpFanDriver::TpFanDriver;
+
+	void set_last_watchdog_ping(std::chrono::system_clock::time_point value)
+	{ last_watchdog_ping_ = value; }
+
+	std::chrono::system_clock::time_point last_watchdog_ping() const
+	{ return last_watchdog_ping_; }
+};
+
+std::string first_line(const std::string &path)
+{
+	std::ifstream file(path);
+	std::string line;
+	std::getline(file, line);
+	return line;
+}
+
 using Time = std::chrono::steady_clock::time_point;
 
 struct SimpleFixture {
@@ -310,6 +329,43 @@ void test_complex_levels_preserve_zone_semantics()
 	CHECK(fan_ptr->commands.back() == "level 0");
 }
 
+void test_tpacpi_watchdog_refresh()
+{
+	const std::string path = "/tmp/thinkfan-tpacpi-watchdog-test";
+	{
+		std::ofstream fan(path);
+		fan << "level: 0\n"
+			<< "commands: level <level> watchdog <timeout>\n";
+	}
+
+	const auto previous_sleeptime = sleeptime;
+	sleeptime = seconds(0);
+	{
+		InspectableTpFan fan(path);
+		fan.try_init();
+		fan.set_watchdog(7);
+		SimpleLevel level(0, 0, 80);
+
+		const auto before_speed_change = std::chrono::system_clock::now();
+		fan.set_speed(level);
+		CHECK(first_line(path) == "level 0");
+		CHECK(fan.last_watchdog_ping() >= before_speed_change);
+
+		const auto stale_ping = std::chrono::system_clock::now() - seconds(8);
+		fan.set_last_watchdog_ping(stale_ping);
+		fan.ping_watchdog_and_depulse(level);
+		CHECK(first_line(path) == "watchdog 7");
+		const auto watchdog_ping = fan.last_watchdog_ping();
+		CHECK(watchdog_ping > stale_ping);
+
+		fan.ping_watchdog_and_depulse(level);
+		CHECK(first_line(path) == "watchdog 7");
+		CHECK(fan.last_watchdog_ping() == watchdog_ping);
+	}
+	sleeptime = previous_sleeptime;
+	std::remove(path.c_str());
+}
+
 #ifdef USE_YAML
 void test_yaml_duration_syntax()
 {
@@ -356,6 +412,7 @@ int main()
 	test_zero_delay_is_immediate();
 	test_legacy_jump();
 	test_complex_levels_preserve_zone_semantics();
+	test_tpacpi_watchdog_refresh();
 	#ifdef USE_YAML
 	test_yaml_duration_syntax();
 	#endif
