@@ -136,11 +136,31 @@ void test_numeric_pwm_order_and_exact_matching()
 	}));
 }
 
+void test_no_automatic_matches_fail_cleanly()
+{
+	TemporaryDirectory sensor_directory;
+	const string sensor_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(sensor_directory.path().string(), nullopt, nullopt, nullopt);
+		interface.lookup();
+	});
+	CHECK(sensor_error.find("No matching temp*_input files found") != string::npos);
+	CHECK(sensor_error.find("iterator out of bounds") == string::npos);
+
+	TemporaryDirectory fan_directory;
+	const string fan_error = expect_error([&] {
+		HwmonInterface<FanDriver> interface(fan_directory.path().string(), nullopt, nullopt, nullopt);
+		interface.lookup();
+	});
+	CHECK(fan_error.find("No matching pwm* files found") != string::npos);
+	CHECK(fan_error.find("iterator out of bounds") == string::npos);
+}
+
 } // namespace
 
 int main()
 {
 	test_numeric_temperature_order_and_exact_matching();
 	test_numeric_pwm_order_and_exact_matching();
+	test_no_automatic_matches_fail_cleanly();
 	return 0;
 }

@@ -94,6 +94,14 @@ opt<unsigned int> HwmonInterface<FanDriver>::index_from_filename(const string &f
 { return parse_indexed_filename(filename, "pwm", ""); }
 
 template<>
+string HwmonInterface<SensorDriver>::driver_file_pattern()
+{ return "temp*_input"; }
+
+template<>
+string HwmonInterface<FanDriver>::driver_file_pattern()
+{ return "pwm*"; }
+
+template<>
 int HwmonInterface<SensorDriver>::filter_driver_file(const struct dirent *entry)
 {
 	return (entry->d_type == DT_REG || entry->d_type == DT_LNK)
@@ -328,6 +336,11 @@ string HwmonInterface<HwmonT>::lookup()
 					filesystem::path(rhs).filename().string()
 				).value();
 			});
+			if (paths.empty())
+				throw DriverInitError(
+					"No matching " + HwmonInterface<HwmonT>::driver_file_pattern()
+					+ " files found in " + path
+				);
 			found_paths_.swap(paths);
 		}
 
