@@ -358,11 +358,13 @@ string HwmonInterface<HwmonT>::lookup()
 		else {
 			vector<string> paths = dir_entries<filter_driver_file>(path);
 			std::sort(paths.begin(), paths.end(), [](const string &lhs, const string &rhs) {
-				return HwmonInterface<HwmonT>::index_from_filename(
+				const unsigned int lhs_index = HwmonInterface<HwmonT>::index_from_filename(
 					filesystem::path(lhs).filename().string()
-				).value() < HwmonInterface<HwmonT>::index_from_filename(
+				).value();
+				const unsigned int rhs_index = HwmonInterface<HwmonT>::index_from_filename(
 					filesystem::path(rhs).filename().string()
 				).value();
+				return lhs_index != rhs_index ? lhs_index < rhs_index : lhs < rhs;
 			});
 			if (paths.empty())
 				throw DriverInitError(

@@ -120,6 +120,21 @@ void test_numeric_temperature_order_and_exact_matching()
 	}));
 }
 
+void test_sparse_temperature_indices()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp5_input");
+	directory.add_file("temp1_input");
+	directory.add_file("temp2_input");
+
+	const vector<string> paths = lookup_all<SensorDriver>(directory.path());
+	CHECK((paths == vector<string>{
+		(directory.path() / "temp1_input").string(),
+		(directory.path() / "temp2_input").string(),
+		(directory.path() / "temp5_input").string()
+	}));
+}
+
 void test_numeric_pwm_order_and_exact_matching()
 {
 	TemporaryDirectory directory;
@@ -291,6 +306,7 @@ void test_model_lookup_and_ambiguity_errors()
 int main()
 {
 	test_numeric_temperature_order_and_exact_matching();
+	test_sparse_temperature_indices();
 	test_numeric_pwm_order_and_exact_matching();
 	test_no_automatic_matches_fail_cleanly();
 	test_explicit_indices_preserve_order();
