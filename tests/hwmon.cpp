@@ -1,3 +1,4 @@
+#include "config.h"
 #include "error.h"
 #include "fans.h"
 #include "hwmon.h"
@@ -68,23 +69,7 @@ vector<string> lookup_all(
 )
 {
 	HwmonInterface<HwmonT> interface(path.string(), name, model, indices);
-	vector<string> result;
-	const size_t expected_count = indices ? indices->size() : 0;
-	if (indices) {
-		for (size_t i = 0; i < expected_count; ++i)
-			result.push_back(interface.lookup());
-	}
-	else {
-		while (true) {
-			try {
-				result.push_back(interface.lookup());
-			}
-			catch (const Bug &) {
-				break;
-			}
-		}
-	}
-	return result;
+	return interface.lookup_all();
 }
 
 template<class Fn>
@@ -169,6 +154,137 @@ void test_no_automatic_matches_fail_cleanly()
 	CHECK(fan_error.find("No matching pwm* files found") != string::npos);
 	CHECK(fan_error.find("iterator out of bounds") == string::npos);
 }
+
+void test_direct_input_path_is_not_treated_as_a_directory()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp1_input");
+	directory.add_file("pwm1");
+
+	const vector<string> sensor_paths = lookup_all<SensorDriver>(directory.path() / "temp1_input");
+	CHECK((sensor_paths == vector<string>{
+		(directory.path() / "temp1_input").string()
+	}));
+
+	const vector<string> fan_paths = lookup_all<FanDriver>(directory.path() / "pwm1");
+	CHECK((fan_paths == vector<string>{
+		(directory.path() / "pwm1").string()
+	}));
+}
+
+#ifdef USE_YAML
+void test_yaml_automatic_discovery_expands_sensor_drivers()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp10_input", "43000\n");
+	directory.add_file("temp1_input", "41000\n");
+	directory.add_file("pwm1", "0\n");
+	directory.add_file("pwm1_enable", "2\n");
+
+	const filesystem::path config_path = directory.path() / "config.yaml";
+	directory.add_file("config.yaml",
+		"sensors:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    correction: [1, 2]\n"
+		"fans:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    indices: [1]\n"
+		"levels:\n"
+		"  - speed: 0\n"
+		"    upper_limit: [80, 80]\n"
+		"  - speed: 128\n"
+		"    lower_limit: [70, 70]\n"
+		"safety:\n"
+		"  emergency_temp: [105, 82]\n"
+	);
+
+	std::unique_ptr<const Config> config(Config::read_config({config_path.string()}));
+	TemperatureState temperatures(0);
+	config->init(temperatures);
+	CHECK(config->sensors().size() == 2);
+	CHECK(config->num_temps() == 2);
+	for (const auto &sensor : config->sensors())
+		sensor->read_temps();
+	CHECK((temperatures.raw_temps() == vector<int>{41, 43}));
+	CHECK((temperatures.temps() == vector<int>{42, 45}));
+
+	directory.add_file("bad-correction.yaml",
+		"sensors:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    correction: [1]\n"
+		"fans:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    indices: [1]\n"
+		"levels:\n"
+		"  - speed: 0\n"
+		"    upper_limit: [80, 80]\n"
+		"  - speed: 128\n"
+		"    lower_limit: [70, 70]\n"
+	);
+	const string correction_error = expect_error([&] {
+		std::unique_ptr<const Config> bad_config(
+			Config::read_config({(directory.path() / "bad-correction.yaml").string()})
+		);
+	});
+	CHECK(correction_error.find("correction") != string::npos);
+	CHECK(correction_error.find("2") != string::npos);
+}
+
+void test_yaml_automatic_discovery_expands_fan_drivers()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp1_input", "41000\n");
+	directory.add_file("pwm1", "0\n");
+	directory.add_file("pwm2", "0\n");
+
+	const filesystem::path config_path = directory.path() / "config.yaml";
+	directory.add_file("config.yaml",
+		"sensors:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"fans:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"levels:\n"
+		"  - speed: [0, 0]\n"
+		"    upper_limit: [80]\n"
+		"  - speed: [128, 128]\n"
+		"    lower_limit: [70]\n"
+	);
+
+	std::unique_ptr<const Config> config(Config::read_config({config_path.string()}));
+	CHECK(config->fan_configs().size() == 2);
+}
+
+void test_yaml_direct_input_path_creates_one_sensor_driver()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp1_input", "41000\n");
+	directory.add_file("pwm1", "0\n");
+	directory.add_file("pwm1_enable", "2\n");
+
+	const filesystem::path config_path = directory.path() / "config.yaml";
+	directory.add_file("config.yaml",
+		"sensors:\n"
+		"  - hwmon: " + (directory.path() / "temp1_input").string() + "\n"
+		"    correction: [1]\n"
+		"fans:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    indices: [1]\n"
+		"levels:\n"
+		"  - speed: 0\n"
+		"    upper_limit: 80\n"
+		"  - speed: 128\n"
+		"    lower_limit: 70\n"
+	);
+
+	std::unique_ptr<const Config> config(Config::read_config({config_path.string()}));
+	TemperatureState temperatures(0);
+	config->init(temperatures);
+	CHECK(config->sensors().size() == 1);
+	CHECK(config->num_temps() == 1);
+	config->sensors().front()->read_temps();
+	CHECK((temperatures.temps() == vector<int>{42}));
+}
+#endif
 
 void test_explicit_indices_preserve_order()
 {
@@ -344,6 +460,12 @@ int main()
 	test_sparse_temperature_indices();
 	test_numeric_pwm_order_and_exact_matching();
 	test_no_automatic_matches_fail_cleanly();
+	test_direct_input_path_is_not_treated_as_a_directory();
+	#ifdef USE_YAML
+	test_yaml_automatic_discovery_expands_sensor_drivers();
+	test_yaml_automatic_discovery_expands_fan_drivers();
+	test_yaml_direct_input_path_creates_one_sensor_driver();
+	#endif
 	test_explicit_indices_preserve_order();
 	test_explicit_no_match_recurses_into_hwmon_directory();
 	test_explicit_partial_match_is_order_independent();

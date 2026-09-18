@@ -38,9 +38,11 @@ public:
 	HwmonInterface();
 	HwmonInterface(const string &base_path, opt<const string> name, opt<const string> model,  opt<vector<unsigned int>> indices);
 
+	const vector<string> &lookup_all();
 	string lookup();
 
 private:
+	void resolve_paths();
 	static int filter_driver_file(const struct dirent *entry);
 	static opt<unsigned int> index_from_filename(const string &filename);
 	static string driver_file_pattern();
@@ -58,6 +60,7 @@ protected:
 	opt<const string> model_;
 	opt<vector<unsigned int>> indices_;
 	vector<string> found_paths_;
+	bool paths_resolved_ = false;
 	opt<vector<string>::const_iterator> paths_it_;
 };
 

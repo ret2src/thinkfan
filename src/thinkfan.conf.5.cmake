@@ -207,8 +207,9 @@ As long as it contains only a single hwmon driver/interface, the
 \*(rq entry may be omitted to discover matching inputs automatically. Automatic
 discovery considers exact \*(lqtemp\fIX\fR_input\*(rq or \*(lqpwm\fIX\fR\*(rq file
 names and orders the discovered numeric indices as 1, 2, ..., 10. If positional
-correction or temperature-limit vectors are used, explicit indices are recommended
-when the sensor count must be fixed.
+correction or temperature-limit vectors are used, their length must match the
+automatically discovered sensor count. Explicit indices are recommended when the
+sensor count must be fixed.
 Otherwise, specify the
 \*(lq\c
 .BI indices: " index-list"\c

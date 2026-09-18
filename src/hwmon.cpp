@@ -312,9 +312,9 @@ vector<string> HwmonInterface<HwmonT>::find_hwmons_by_indices(
 
 
 template<class HwmonT>
-string HwmonInterface<HwmonT>::lookup()
+void HwmonInterface<HwmonT>::resolve_paths()
 {
-	if (!paths_it_) {
+	if (!paths_resolved_) {
 		if (!base_path_)
 			throw Bug("Can't lookup sensor because it has no base path");
 
@@ -355,6 +355,12 @@ string HwmonInterface<HwmonT>::lookup()
 			if (found_paths_.size() == 0)
 				throw DriverInitError(path + ": " + "Could not find any hwmons in " + path);
 		}
+		else if (index_from_filename(filesystem::path(path).filename().string())) {
+			std::ifstream f(path);
+			if (!f.is_open() || !f.good())
+				throw DriverInitError("Could not open hwmon input file " + path);
+			found_paths_.push_back(path);
+		}
 		else {
 			vector<string> paths = dir_entries<filter_driver_file>(path);
 			std::sort(paths.begin(), paths.end(), [](const string &lhs, const string &rhs) {
@@ -373,9 +379,25 @@ string HwmonInterface<HwmonT>::lookup()
 				);
 			found_paths_.swap(paths);
 		}
-
-		paths_it_.emplace(found_paths_.begin());
+		paths_resolved_ = true;
 	}
+}
+
+
+template<class HwmonT>
+const vector<string> &HwmonInterface<HwmonT>::lookup_all()
+{
+	resolve_paths();
+	return found_paths_;
+}
+
+
+template<class HwmonT>
+string HwmonInterface<HwmonT>::lookup()
+{
+	resolve_paths();
+	if (!paths_it_)
+		paths_it_.emplace(found_paths_.begin());
 
 	if (*paths_it_ >= found_paths_.end())
 		throw Bug(string(__func__) + ": found_paths_ iterator out of bounds");
