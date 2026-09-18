@@ -100,7 +100,7 @@ The syntax for identifying each type of sensors looks as follows:
 \f[CB]  \- hwmon: \f[CI]hwmon-path\f[CR]          # A path to a sysfs/hwmon sensor
 \f[CB]    name: \f[CI]hwmon-name\f[CR]           # Optional entry
 \f[CB]    model: \f[CI]hwmon-model\f[CR]         # Optional entry for nvme
-\f[CB]    indices: \f[CI]index-list\f[CR]        # Optional entry
+\f[CB]    indices: \f[CI]index-list\f[CR]        # Optional; auto-discover if omitted
 
 \f[CB]  \- chip: \f[CI]chip-name\f[CR]            # An lm_sensors/libsensors chip...
 \f[CB]    ids: \f[CI]id-list\f[CR]               # ... with some feature IDs
@@ -150,7 +150,7 @@ section:
 
 \f[CB]  \- hwmon: \f[CI]hwmon-path
 \f[CB]    name: \f[CI]hwmon-name
-\f[CB]    indices: \f[CI]index-list
+\f[CB]    indices: \f[CI]index-list        # Optional; auto-discover if omitted
 
 \f[CB]  \- \f[CR]...
 \fR
@@ -201,8 +201,15 @@ A directory that contains a specific hwmon driver, for example
 \*(lq/sys/devices/platform/nct6775.2592\*(rq.
 Note that this path does not contain the load-order dependent
 \*(lqhwmon\fIX\fR\*(rq folder.
-As long as it contains only a single hwmon driver/interface it is sufficient to
-specify the
+As long as it contains only a single hwmon driver/interface, the
+\*(lq\c
+.BI indices: " index-list"\c
+\*(rq entry may be omitted to discover matching inputs automatically. Automatic
+discovery considers exact \*(lqtemp\fIX\fR_input\*(rq or \*(lqpwm\fIX\fR\*(rq file
+names and orders the discovered numeric indices as 1, 2, ..., 10. If positional
+correction or temperature-limit vectors are used, explicit indices are recommended
+when the sensor count must be fixed.
+Otherwise, specify the
 \*(lq\c
 .BI indices: " index-list"\c
 \*(rq
@@ -217,12 +224,14 @@ entry is unnecessary.
 .IP 3) 3
 A directory that contains multiple or all of the hwmon drivers, for example
 \*(lq/sys/class/hwmon\*(rq.
-Here, both the \*(lq\c
+Here, the \*(lq\c
 .BI name: " hwmon-name"\c
-\*(rq and \*(lq\c
+\*(rq or \*(lq\c
+.BI model: " hwmon-model"\c
+\*(rq entry identifies the interface below that path. The \*(lq\c
 .BI indices: " index-list"\c
-\*(rq entries are required to tell thinkfan which interface to select below that
-path, and which sensors or which fan to use from that interface.
+\*(rq entry is optional; when omitted, matching inputs are discovered in numeric
+index order. Explicit indices are returned in the order written.
 
 .RE
 .TP
@@ -258,15 +267,21 @@ all of them may be relevant for fan control.
 .IP \(bu 2
 For
 .B hwmon
-entries, this is required if
+entries, this may be omitted when
 .I hwmon-path
-does not refer directly to a single \*(lqtemp\fIXi\fR_input\*(rq file, but to a folder
-that contains one or more of them.
-In this case,
+and any
+.I name
+or
+.I model
+entries sufficiently identify the desired interface. When omitted, exact
+\*(lqtemp\fIXi\fR_input\*(rq or \*(lqpwm\fIXi\fR\*(rq matches are discovered in
+numeric index order.
+When it is provided,
 .I index-list
 specifies the
 .I Xi
-for the \*(lqtemp\fIXi\fR_input\*(rq files that should be used.
+for the \*(lqtemp\fIXi\fR_input\*(rq files that should be used, and explicit
+indices retain the order in which they are written.
 A hwmon interface may also contain multiple PWM controls for fans, so in that case,
 .I index-list
 must contain exactly one entry.
