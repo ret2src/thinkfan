@@ -66,6 +66,13 @@ separate config section (see the
 .B FAN SPEEDS
 section below).
 
+YAML profiles that use delayed fan transitions must also specify a root-level
+.B safety:
+map with an
+.B emergency_temp
+value. A scalar applies to every configured sensor; a list supplies one raw
+temperature per sensor and may use an underscore to ignore a sensor.
+
 .SS Sensor Syntax
 
 The entries under the
@@ -395,6 +402,21 @@ required fan behaviour is similar enough for all heat-generating devices.
 \fR
 .fi
 
+To use dwell delays in simple mode, use the named mapping form. Delay values
+are optional and are whole, non-negative seconds with an \fBs\fR suffix:
+
+.nf
+\fC
+levels:
+  - speed: 0
+    upper_limit: 82
+    up_delay: 15s
+  - speed: 255
+    lower_limit: 75
+    down_delay: 60s
+\fR
+.fi
+
 
 .SS Detailed Syntax
 This mode is suitable for more complex systems, with devices that have
@@ -412,9 +434,32 @@ sensor individually:
 \f[CB]  \- speed: [ \f[CI]fan1-speed\f[CB], \f[CI]fan2-speed\f[CB], \f[CR]...\f[CB] ]
 \f[CB]    lower_limit: [ \f[CI]l1\f[CB], \f[CI]l2\f[CB], \f[CR]...\f[CB] ]
 \f[CB]    upper_limit: [ \f[CI]u1\f[CB], \f[CI]u2\f[CB], \f[CR]...\f[CB] ]
+\f[CB]    up_delay: \f[CI]seconds\f[CB]s                 # Optional
+\f[CB]    down_delay: \f[CI]seconds\f[CB]s               # Optional
 \f[CB]  \- \f[CR]...\f[CB]
 \fR
 .fi
+
+If either delay field appears on any level of a fan mapping, that mapping uses
+temporal control: each normal update can move only one adjacent level. Upper
+threshold qualification remains continuous for the configured \fBup_delay\fR.
+Downward qualification is accumulated cooldown evidence: time below the lower
+threshold adds evidence, time in the hysteresis band pauses it, and time above
+the upper threshold removes it. A downward transition also requires the
+temperature to be below the lower threshold continuously for a fixed three
+second confirmation interval. A missing delay in such a mapping means zero
+seconds; a zero \fBdown_delay\fR therefore permits an immediate downward
+transition when the current temperature is below the lower threshold.
+This short confirmation is current-state validation against stale evidence,
+not a second cooldown accumulation timer.
+A dwell or confirmation transition is performed on the first observation at
+which the configured elapsed duration has been met or exceeded; durations are
+not interpolated between observations.
+Delay-enabled profiles must define \fBsafety: emergency_temp:\fR; emergency
+control uses the raw sensor reading and immediately selects the final
+configured level. Temporal qualification is reset after suspend notification,
+configuration reload, emergency operation, or an unreasonable observation
+gap.
 
 
 .SS Values
@@ -533,4 +578,3 @@ Report bugs on the github issue tracker:
 .UR https://github.com/vmatare/thinkfan/issues
 .UE
 .fi
-

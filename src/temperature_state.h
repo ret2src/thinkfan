@@ -34,7 +34,8 @@ public:
 	class Ref {
 	public:
 		Ref();
-		void add_temp(int t);
+		/** Add a hardware reading and an optional calibration correction. */
+		void add_temp(int t, int correction = 0);
 		void skip_temp();
 		void restart();
 
@@ -43,10 +44,12 @@ public:
 		Ref(TemperatureState &ts, unsigned int offset);
 
 		Iter<int> temp0_;
+		Iter<int> raw_temp0_;
 		Iter<float> bias0_;
 		Iter<int> biased_temp0_;
 
 		Iter<int> temp_;
+		Iter<int> raw_temp_;
 		Iter<float> bias_;
 		Iter<int> biased_temp_;
 
@@ -56,6 +59,7 @@ public:
 	TemperatureState(unsigned int num_temps);
 
 	const vector<int> &biased_temps() const;
+	const vector<int> &raw_temps() const;
 	const vector<int> &temps() const;
 	const vector<float> &biases() const;
 
@@ -64,6 +68,7 @@ public:
 	void reset_refd_count();
 
 private:
+	vector<int> raw_temps_;
 	vector<int> temps_;
 	vector<float> biases_;
 	vector<int> biased_temps_;

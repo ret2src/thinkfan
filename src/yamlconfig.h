@@ -15,6 +15,7 @@ using namespace thinkfan;
 const string kw_sensors("sensors");
 const string kw_fans("fans");
 const string kw_levels("levels");
+const string kw_safety("safety");
 const string kw_tpacpi("tpacpi");
 const string kw_hwmon("hwmon");
 #ifdef USE_NVML
@@ -36,6 +37,9 @@ const string kw_indices("indices");
 const string kw_correction("correction");
 const string kw_optional("optional");
 const string kw_max_errors("max_errors");
+const string kw_up_delay("up_delay");
+const string kw_down_delay("down_delay");
+const string kw_emergency_temp("emergency_temp");
 
 
 template<>
@@ -48,6 +52,8 @@ struct LevelEntry {
 	vector<pair<string, int>> fan_levels;
 	vector<int> lower_limit;
 	vector<int> upper_limit;
+	opt<seconds> up_delay;
+	opt<seconds> down_delay;
 };
 
 

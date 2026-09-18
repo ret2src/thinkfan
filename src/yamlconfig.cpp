@@ -85,6 +85,32 @@ opt<T> decode_opt(const Node &node) {
 }
 
 
+seconds decode_duration(const Node &node)
+{
+	string value;
+	try {
+		value = node.as<string>();
+	} catch (BadConversion &) {
+		throw YamlError(get_mark_compat(node), "Duration must be a non-negative number of seconds such as 12s");
+	}
+
+	if (value.size() < 2 || value.back() != 's')
+		throw YamlError(get_mark_compat(node), "Duration must be a non-negative number of seconds such as 12s");
+
+	try {
+		size_t end = 0;
+		unsigned long count = std::stoul(value.substr(0, value.size() - 1), &end);
+		if (end != value.size() - 1 || count > std::numeric_limits<unsigned int>::max())
+			throw std::out_of_range("duration");
+		return seconds(static_cast<unsigned int>(count));
+	} catch (std::invalid_argument &) {
+		throw YamlError(get_mark_compat(node), "Duration must be a non-negative number of seconds such as 12s");
+	} catch (std::out_of_range &) {
+		throw YamlError(get_mark_compat(node), "Duration is too large");
+	}
+}
+
+
 template<>
 bool convert_driver<vector<wtf_ptr<HwmonSensorDriver>>>(
 	const Node &node,
@@ -363,13 +389,13 @@ void assign_fan_levels(vector<unique_ptr<StepwiseMapping>> &fan_configs, const N
 		size_t fan_idx = 0;
 		for (unique_ptr<StepwiseMapping> &fan_cfg : fan_configs) {
 			try {
-				fan_cfg->add_level(
-					std::make_unique<ComplexLevel>(
-						lvl_entry.fan_levels[fan_idx].first,
-						lvl_entry.lower_limit,
-						lvl_entry.upper_limit
-					)
+				auto level = std::make_unique<ComplexLevel>(
+					lvl_entry.fan_levels[fan_idx].first,
+					lvl_entry.lower_limit,
+					lvl_entry.upper_limit
 				);
+				level->set_delays(lvl_entry.up_delay, lvl_entry.down_delay);
+				fan_cfg->add_level(std::move(level));
 			} catch (ConfigError &e) {
 				throw YamlError(get_mark_compat(entry), e.what());
 			}
@@ -457,6 +483,22 @@ vector<int> get_limit(const Node &n) {
 }
 
 
+vector<int> get_emergency_limits(const Node &n)
+{
+	if (n.IsSequence())
+		return get_limit(n);
+
+	try {
+		int value = n.as<int>();
+		if (value == numeric_limits<int>::min())
+			throw YamlError(get_mark_compat(n), "Invalid emergency temperature");
+		return vector<int>{value};
+	} catch (BadConversion &) {
+		throw YamlError(get_mark_compat(n), "Emergency temperature must be an integer or integer sequence");
+	}
+}
+
+
 
 pair<string, int> get_fan_level(const Node &n) {
 	int level_n;
@@ -480,8 +522,14 @@ template<>
 struct convert<LevelEntry> {
 	static bool decode(const Node &node, LevelEntry &rv)
 	{
+		if (!node.IsMap())
+			return false;
+		allowed_keywords(node, {kw_speed, kw_lower, kw_upper, kw_up_delay, kw_down_delay});
 		const Node &n_lower = node[kw_lower], &n_upper = node[kw_upper];
 		if (!(node[kw_speed] && (n_lower || n_upper)))
+			return false;
+		// Scalar limits are the simple named syntax; let its converter handle them.
+		if ((n_lower && !n_lower.IsSequence()) || (n_upper && !n_upper.IsSequence()))
 			return false;
 
 		if (node[kw_speed].IsSequence()) {
@@ -500,6 +548,11 @@ struct convert<LevelEntry> {
 			rv.lower_limit = vector<int>(rv.upper_limit.size(), numeric_limits<int>::min());
 		else if (rv.upper_limit.empty())
 			rv.upper_limit = vector<int>(rv.lower_limit.size(), numeric_limits<int>::max());
+
+		if (node[kw_up_delay])
+			rv.up_delay = decode_duration(node[kw_up_delay]);
+		if (node[kw_down_delay])
+			rv.down_delay = decode_duration(node[kw_down_delay]);
 
 		return true;
 	}
@@ -524,6 +577,7 @@ struct convert<wtf_ptr<SimpleLevel>> {
 			}
 		}
 		else {
+			allowed_keywords(node, {kw_speed, kw_lower, kw_upper, kw_up_delay, kw_down_delay});
 			int lower, upper;
 
 			if (n_lower) {
@@ -548,6 +602,10 @@ struct convert<wtf_ptr<SimpleLevel>> {
 				level = make_wtf<SimpleLevel>(node[kw_speed].as<string>(), lower, upper);
 			}
 		}
+
+		opt<seconds> up_delay = node[kw_up_delay] ? opt<seconds>(decode_duration(node[kw_up_delay])) : nullopt;
+		opt<seconds> down_delay = node[kw_down_delay] ? opt<seconds>(decode_duration(node[kw_down_delay])) : nullopt;
+		level->set_delays(up_delay, down_delay);
 		return true;
 	}
 };
@@ -563,8 +621,17 @@ bool convert<wtf_ptr<Config>>::decode(const Node &node, wtf_ptr<Config> &config)
 	for (YAML::const_iterator it = node.begin(); it != node.end(); ++it) {
 		const string key = it->first.as<string>();
 
-		if (key != kw_sensors && key != kw_fans && key != kw_levels)
+		if (key != kw_sensors && key != kw_fans && key != kw_levels && key != kw_safety)
 			throw YamlError(get_mark_compat(it->first), "Unknown keyword");
+	}
+
+	if (node[kw_safety]) {
+		if (!node[kw_safety].IsMap())
+			throw YamlError(get_mark_compat(node[kw_safety]), "Safety must be a map");
+		allowed_keywords(node[kw_safety], {kw_emergency_temp});
+		if (!node[kw_safety][kw_emergency_temp])
+			throw YamlError(get_mark_compat(node[kw_safety]), "Missing emergency_temp");
+		config->set_emergency_temp(get_emergency_limits(node[kw_safety][kw_emergency_temp]));
 	}
 
 	if (node[kw_sensors]) {
@@ -632,6 +699,3 @@ bool convert<wtf_ptr<Config>>::decode(const Node &node, wtf_ptr<Config> &config)
 
 
 }
-
-
-

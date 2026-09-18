@@ -168,6 +168,25 @@ fans:
 # Correction values on individual sensors (see above) may be used to equalize
 # small discrepancies in temperature ratings.
 #
+# Delay-enabled profiles must also define a root-level safety threshold. A
+# scalar applies to every configured sensor; a list follows sensor order and
+# may use '_' to ignore a sensor.
+#
+# safety:
+#   emergency_temp: 98
+#
+# To opt into temporal control, use named level mappings, for example:
+#
+# levels:
+#   - speed: 0
+#     upper_limit: 82
+#     up_delay: 15s
+#   - speed: 255
+#     lower_limit: 75
+#     # down_delay is accumulated cooldown evidence, not uninterrupted time.
+#     # A fixed 3s confirmation is also required before stepping down.
+#     down_delay: 60s
+#
 # The FANSPEED values in this example are valid for the thinkpad_acpi fan
 # driver only (see above)
 #
@@ -206,5 +225,3 @@ levels:
     lower_limit: [60, 60, 60]
 
 ##############################################################################
-
-

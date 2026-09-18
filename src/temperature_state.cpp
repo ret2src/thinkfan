@@ -27,7 +27,8 @@ namespace thinkfan {
 
 
 TemperatureState::TemperatureState(unsigned int num_temps)
-: temps_(num_temps, 0),
+: raw_temps_(num_temps, 0),
+  temps_(num_temps, 0),
   biases_(num_temps, 0),
   biased_temps_(num_temps, 0),
   refd_temps_(0),
@@ -36,9 +37,11 @@ TemperatureState::TemperatureState(unsigned int num_temps)
 
 TemperatureState::Ref::Ref(TemperatureState &ts, unsigned int offset)
 : temp0_(ts.temps_.begin() + offset),
+  raw_temp0_(ts.raw_temps_.begin() + offset),
   bias0_(ts.biases_.begin() + offset),
   biased_temp0_(ts.biased_temps_.begin() + offset),
   temp_(temp0_),
+  raw_temp_(raw_temp0_),
   bias_(bias0_),
   biased_temp_(biased_temp0_),
   tstate_(&ts)
@@ -52,13 +55,16 @@ TemperatureState::Ref::Ref()
 void TemperatureState::Ref::restart()
 {
 	temp_ = temp0_;
+	raw_temp_ = raw_temp0_;
 	bias_ = bias0_;
 	biased_temp_ = biased_temp0_;
 }
 
 
-void TemperatureState::Ref::add_temp(int t)
+void TemperatureState::Ref::add_temp(int t, int correction)
 {
+	*raw_temp_ = t;
+	t += correction;
 	int diff = *temp_ > 0 ?
 		t - *temp_
 		: 0;
@@ -97,6 +103,7 @@ void TemperatureState::Ref::add_temp(int t)
 
 void TemperatureState::Ref::skip_temp()
 {
+	++raw_temp_;
 	++temp_;
 	++bias_;
 	++biased_temp_;
@@ -106,6 +113,9 @@ void TemperatureState::Ref::skip_temp()
 
 const vector<int> & TemperatureState::biased_temps() const
 { return biased_temps_; }
+
+const vector<int> & TemperatureState::raw_temps() const
+{ return raw_temps_; }
 
 const vector<int> & TemperatureState::temps() const
 { return temps_; }

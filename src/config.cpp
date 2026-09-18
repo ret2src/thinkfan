@@ -58,33 +58,282 @@ const vector<unique_ptr<Level>> &StepwiseMapping::levels() const
 
 void StepwiseMapping::init_fanspeed(const TemperatureState &ts)
 {
+	reset_temporal_state();
 	cur_lvl_ = --levels().end();
+	if (emergency(ts)) {
+		emergency_active_ = true;
+		fan()->set_speed(**cur_lvl_);
+		log(TF_WRN) << "Emergency temperature reached; fan level set to "
+			<< (*cur_lvl_)->str() << "; raw temperature: " << ts.raw_temps() << flush;
+		return;
+	}
 	while (cur_lvl_ != levels().begin() && (*cur_lvl_)->down(ts))
 		cur_lvl_--;
 	fan()->set_speed(**cur_lvl_);
 }
 
-bool StepwiseMapping::set_fanspeed(const TemperatureState &ts)
+bool StepwiseMapping::set_fanspeed(const TemperatureState &ts,
+	std::chrono::steady_clock::time_point now)
 {
-	if (unlikely(cur_lvl_ != --levels().end() && (*cur_lvl_)->up(ts))) {
-		while (cur_lvl_ != --levels().end() && (*cur_lvl_)->up(ts))
-			cur_lvl_++;
+	if (emergency(ts)) {
+		const bool entering_emergency = !emergency_active_;
+		if (entering_emergency)
+			log(TF_WRN) << "Emergency temperature reached; bypassing normal fan delays; raw temperature: "
+				<< ts.raw_temps() << flush;
+		clear_transition_state();
+		emergency_active_ = true;
+		cur_lvl_ = --levels().end();
 		fan()->set_speed(**cur_lvl_);
-		return true;
+		return entering_emergency;
 	}
-	else if (unlikely(cur_lvl_ != levels().begin() && (*cur_lvl_)->down(ts))) {
-		while (cur_lvl_ != levels().begin() && (*cur_lvl_)->down(ts))
-			cur_lvl_--;
-		fan()->set_speed(**cur_lvl_);
-		tmp_sleeptime = sleeptime;
-		return true;
+
+	if (emergency_active_) {
+		emergency_active_ = false;
+		clear_transition_state();
+		log(TF_NFY) << "Emergency temperature cleared; resuming normal fan control" << flush;
 	}
-	else {
-		fan()->ping_watchdog_and_depulse(**cur_lvl_);
+
+	if (!temporal_control_) {
+		if (unlikely(cur_lvl_ != --levels().end() && (*cur_lvl_)->up(ts))) {
+			while (cur_lvl_ != --levels().end() && (*cur_lvl_)->up(ts))
+				cur_lvl_++;
+			fan()->set_speed(**cur_lvl_);
+			return true;
+		}
+		else if (unlikely(cur_lvl_ != levels().begin() && (*cur_lvl_)->down(ts))) {
+			while (cur_lvl_ != levels().begin() && (*cur_lvl_)->down(ts))
+				cur_lvl_--;
+			fan()->set_speed(**cur_lvl_);
+			tmp_sleeptime = sleeptime;
+			return true;
+		}
+		else {
+			fan()->ping_watchdog_and_depulse(**cur_lvl_);
+			return false;
+		}
+	}
+
+	const Level &level = **cur_lvl_;
+	const ThermalZone zone = thermal_zone(ts, level);
+	const bool currently_cool = zone == ThermalZone::cool;
+	if (!last_update_ || !last_zone_) {
+		seed_observation(ts, now);
+		if (zone == ThermalZone::hot && cur_lvl_ != --levels().end()
+				&& level.up_delay() == seconds(0)) {
+			transition(ts, true, now, level);
+			return true;
+		}
+		if (zone == ThermalZone::cool && cur_lvl_ != levels().begin()
+				&& level.down_delay() == seconds(0)) {
+			transition(ts, false, now, level);
+			return true;
+		}
+		fan()->ping_watchdog_and_depulse(level);
 		return false;
 	}
+
+	const auto elapsed = now - *last_update_;
+	if (elapsed < std::chrono::steady_clock::duration::zero()
+			|| elapsed > maximum_observation_gap()) {
+		log(TF_DBG) << "Reset temporal qualification after observation gap of "
+			<< std::chrono::duration<float>(elapsed).count() << " s" << flush;
+		clear_transition_state();
+		seed_observation(ts, now);
+		fan()->ping_watchdog_and_depulse(level);
+		return false;
+	}
+
+	update_down_credit(*last_zone_, elapsed, level);
+	last_update_ = now;
+	last_zone_ = zone;
+
+	if (zone == ThermalZone::hot) {
+		down_confirm_since_.reset();
+		log(TF_DBG) << "Cooldown evidence: "
+			<< std::chrono::duration<float>(down_credit_).count() << " / "
+			<< level.down_delay().count() << " s; decaying above upper threshold" << flush;
+		if (cur_lvl_ != --levels().end()) {
+			if (!up_since_)
+				up_since_ = now;
+			const auto up_elapsed = now - *up_since_;
+			log(TF_DBG) << "Upward qualification: "
+				<< std::chrono::duration<float>(up_elapsed).count() << " / "
+				<< level.up_delay().count() << " s" << flush;
+			if (up_elapsed >= level.up_delay()) {
+				transition(ts, true, now, level);
+				return true;
+			}
+		}
+	}
+	else {
+		if (up_since_) {
+			log(TF_DBG) << "Upward qualification reset after "
+				<< std::chrono::duration<float>(now - *up_since_).count()
+				<< " s; cooldown evidence retained: "
+				<< std::chrono::duration<float>(down_credit_).count() << " / "
+				<< level.down_delay().count() << " s" << flush;
+			up_since_.reset();
+		}
+
+		if (zone == ThermalZone::cool) {
+			if (!down_confirm_since_)
+				down_confirm_since_ = now;
+			const auto confirm_elapsed = now - *down_confirm_since_;
+			log(TF_DBG) << "Cooldown evidence: "
+				<< std::chrono::duration<float>(down_credit_).count() << " / "
+				<< level.down_delay().count() << " s; "
+				<< "accumulating below lower threshold" << flush;
+			if (cur_lvl_ != levels().begin()) {
+				const bool cooldown_ready = down_credit_
+					>= std::chrono::duration_cast<std::chrono::steady_clock::duration>(level.down_delay());
+				const bool cool_confirmation_ready = level.down_delay() == seconds(0)
+					|| confirm_elapsed >= down_confirm_delay;
+
+				if (level.down_delay() != seconds(0)) {
+					if (cool_confirmation_ready)
+						log(TF_DBG) << "Downward confirmation: satisfied ("
+							<< std::chrono::duration<float>(confirm_elapsed).count()
+							<< " s continuous)" << flush;
+					else
+						log(TF_DBG) << "Downward confirmation: "
+							<< std::chrono::duration<float>(confirm_elapsed).count() << " / "
+							<< down_confirm_delay.count() << " s" << flush;
+				}
+
+				if (cooldown_ready && currently_cool && cool_confirmation_ready) {
+					transition(ts, false, now, level);
+					return true;
+				}
+			}
+		}
+		else {
+			if (down_confirm_since_)
+				log(TF_DBG) << "Downward confirmation reset in hysteresis band" << flush;
+			down_confirm_since_.reset();
+			log(TF_DBG) << "Cooldown evidence: "
+				<< std::chrono::duration<float>(down_credit_).count() << " / "
+				<< level.down_delay().count() << " s; paused in hysteresis band" << flush;
+		}
+	}
+
+	fan()->ping_watchdog_and_depulse(**cur_lvl_);
+	return false;
 }
 
+void StepwiseMapping::reset_temporal_state()
+{
+	clear_transition_state();
+	emergency_active_ = false;
+}
+
+void StepwiseMapping::clear_transition_state()
+{
+	up_since_.reset();
+	down_credit_ = std::chrono::steady_clock::duration::zero();
+	down_confirm_since_.reset();
+	last_zone_.reset();
+	last_update_.reset();
+}
+
+StepwiseMapping::ThermalZone StepwiseMapping::thermal_zone(const TemperatureState &ts,
+	const Level &level) const
+{
+	if (level.up(ts))
+		return ThermalZone::hot;
+	if (level.down(ts))
+		return ThermalZone::cool;
+	return ThermalZone::neutral;
+}
+
+void StepwiseMapping::seed_observation(const TemperatureState &ts,
+	std::chrono::steady_clock::time_point now)
+{
+	const Level &level = **cur_lvl_;
+	const ThermalZone zone = thermal_zone(ts, level);
+	last_update_ = now;
+	last_zone_ = zone;
+	if (zone == ThermalZone::hot && cur_lvl_ != --levels().end())
+		up_since_ = now;
+	else if (zone == ThermalZone::cool && level.down_delay() != seconds(0))
+		down_confirm_since_ = now;
+
+	if (zone == ThermalZone::cool)
+		log(TF_DBG) << "Cooldown evidence: "
+			<< std::chrono::duration<float>(down_credit_).count() << " / "
+			<< level.down_delay().count() << " s; accumulating below lower threshold" << flush;
+}
+
+void StepwiseMapping::update_down_credit(ThermalZone zone,
+	std::chrono::steady_clock::duration elapsed, const Level &level)
+{
+	const auto limit = std::chrono::duration_cast<std::chrono::steady_clock::duration>(level.down_delay());
+	if (zone == ThermalZone::cool)
+		down_credit_ += elapsed;
+	else if (zone == ThermalZone::hot)
+		down_credit_ -= elapsed;
+
+	if (down_credit_ < std::chrono::steady_clock::duration::zero())
+		down_credit_ = std::chrono::steady_clock::duration::zero();
+	if (down_credit_ > limit)
+		down_credit_ = limit;
+}
+
+std::chrono::steady_clock::duration StepwiseMapping::maximum_observation_gap() const
+{
+	const auto minimum = std::chrono::duration_cast<std::chrono::steady_clock::duration>(seconds(30));
+	const auto configured = std::chrono::duration_cast<std::chrono::steady_clock::duration>(sleeptime) * 3;
+	return std::max(minimum, configured);
+}
+
+bool StepwiseMapping::emergency(const TemperatureState &ts) const
+{
+	if (!emergency_limits_)
+		return false;
+	const auto &raw = ts.raw_temps();
+	for (size_t i = 0; i < raw.size() && i < emergency_limits_->size(); ++i)
+		if ((*emergency_limits_)[i] != std::numeric_limits<int>::max()
+				&& raw[i] >= (*emergency_limits_)[i])
+			return true;
+	return false;
+}
+
+void StepwiseMapping::transition(const TemperatureState &ts,
+	bool upward, std::chrono::steady_clock::time_point now, const Level &level)
+{
+	auto old_level = cur_lvl_;
+	auto next_level = upward ? cur_lvl_ + 1 : cur_lvl_ - 1;
+	const auto credit = std::chrono::duration<float>(down_credit_).count();
+	const auto confirmation = down_confirm_since_
+		? std::chrono::duration<float>(now - *down_confirm_since_).count() : 0.0f;
+	const auto up_elapsed = up_since_
+		? std::chrono::duration<float>(now - *up_since_).count() : 0.0f;
+	fan()->set_speed(**next_level);
+	cur_lvl_ = next_level;
+	if (!upward)
+		tmp_sleeptime = sleeptime;
+	clear_transition_state();
+	seed_observation(ts, now);
+	log(TF_NFY) << "Fan transition " << (*old_level)->str() << " -> "
+		<< (*cur_lvl_)->str() << "; reason: "
+		<< (upward ? "upper threshold continuously observed for "
+			+ std::to_string(up_elapsed) + " s"
+			: "cooldown evidence " + std::to_string(credit) + " / "
+				+ std::to_string(level.down_delay().count())
+				+ " s and lower threshold continuously satisfied for "
+				+ std::to_string(confirmation) + " s")
+		<< "; temperature: "
+		<< ts.temps() << "; threshold: "
+		<< (upward ? level.upper_limit() : level.lower_limit())
+		<< "; configured dwell: "
+		<< (upward ? level.up_delay() : level.down_delay()).count() << " s"
+		<< flush;
+}
+
+bool StepwiseMapping::uses_temporal_control() const
+{ return temporal_control_; }
+
+void StepwiseMapping::set_emergency_limits(const vector<int> &limits)
+{ emergency_limits_ = limits; }
 
 void StepwiseMapping::ensure_consistency(const Config &config) const
 {
@@ -128,6 +377,7 @@ void StepwiseMapping::add_level(unique_ptr<Level> &&level)
 		}
 	}
 
+	temporal_control_ = temporal_control_ || level->has_delay_fields();
 	levels_.push_back(std::move(level));
 }
 
@@ -232,17 +482,36 @@ void Config::ensure_consistency() const
 
 	if (fan_configs().empty())
 		throw ConfigError("No fans are configured in " + src_file);
+	if (sensors().size() < 1)
+		throw ConfigError(src_file + ": " + MSG_NO_SENSOR);
 
+	bool temporal_control = false;
 	for (const unique_ptr<FanConfig> &fan_cfg : fan_configs())
 		try {
 			fan_cfg->ensure_consistency(*this);
+			if (auto mapping = dynamic_cast<StepwiseMapping *>(fan_cfg.get()))
+				temporal_control = temporal_control || mapping->uses_temporal_control();
 		} catch (ConfigError &err) {
 			err.set_filename(src_file);
 			throw;
 		}
 
-	if (sensors().size() < 1)
-		throw ConfigError(src_file + ": " + MSG_NO_SENSOR);
+	if (temporal_control && !emergency_temp_)
+		throw ConfigError(src_file + ": delay-enabled fan levels require safety.emergency_temp");
+
+	if (emergency_temp_) {
+		vector<int> limits;
+		if (emergency_temp_->size() == 1)
+			limits = vector<int>(num_temps(), emergency_temp_->front());
+		else if (emergency_temp_->size() == num_temps())
+			limits = *emergency_temp_;
+		else
+			throw ConfigError(src_file + ": safety.emergency_temp must be a scalar or have one entry per sensor");
+
+		for (const unique_ptr<FanConfig> &fan_cfg : fan_configs())
+			if (auto mapping = dynamic_cast<StepwiseMapping *>(fan_cfg.get()))
+				mapping->set_emergency_limits(limits);
+	}
 }
 
 
@@ -268,6 +537,9 @@ const vector<unique_ptr<FanConfig>> &Config::fan_configs() const
 
 void Config::add_fan_config(unique_ptr<FanConfig> &&fan_cfg)
 { temp_mappings_.push_back(std::move(fan_cfg)); }
+
+void Config::set_emergency_temp(const vector<int> &limits)
+{ emergency_temp_ = limits; }
 
 
 void Config::init_fans() const
@@ -369,6 +641,21 @@ const vector<int> &Level::lower_limit() const
 
 const vector<int> &Level::upper_limit() const
 { return upper_limit_; }
+
+void Level::set_delays(opt<seconds> up_delay, opt<seconds> down_delay)
+{
+	up_delay_ = up_delay;
+	down_delay_ = down_delay;
+}
+
+bool Level::has_delay_fields() const
+{ return up_delay_.has_value() || down_delay_.has_value(); }
+
+seconds Level::up_delay() const
+{ return up_delay_.value_or(seconds(0)); }
+
+seconds Level::down_delay() const
+{ return down_delay_.value_or(seconds(0)); }
 
 const string &Level::str() const
 { return this->level_s_; }

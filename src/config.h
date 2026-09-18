@@ -35,7 +35,8 @@ public:
 	FanConfig(unique_ptr<FanDriver> && = nullptr);
 	virtual ~FanConfig() = default;
 	virtual void init_fanspeed(const TemperatureState &) = 0;
-	virtual bool set_fanspeed(const TemperatureState &) = 0;
+	virtual bool set_fanspeed(const TemperatureState &, std::chrono::steady_clock::time_point) = 0;
+	virtual void reset_temporal_state() {}
 	virtual void ensure_consistency(const Config &) const = 0;
 	void set_fan(unique_ptr<FanDriver> &&);
 	const unique_ptr<FanDriver> &fan() const;
@@ -50,14 +51,36 @@ public:
 	StepwiseMapping(unique_ptr<FanDriver> && = nullptr);
 	virtual ~StepwiseMapping() override = default;
 	virtual void init_fanspeed(const TemperatureState &) override;
-	virtual bool set_fanspeed(const TemperatureState &) override;
+	virtual bool set_fanspeed(const TemperatureState &, std::chrono::steady_clock::time_point) override;
+	virtual void reset_temporal_state() override;
 	virtual void ensure_consistency(const Config &) const override;
 	void add_level(unique_ptr<Level> &&level);
 	const vector<unique_ptr<Level>> &levels() const;
+	void set_emergency_limits(const vector<int> &limits);
+	bool uses_temporal_control() const;
 
 private:
 	vector<unique_ptr<Level>> levels_;
 	vector<unique_ptr<Level>>::const_iterator cur_lvl_;
+	enum class ThermalZone { cool, neutral, hot };
+	bool emergency(const TemperatureState &) const;
+	ThermalZone thermal_zone(const TemperatureState &, const Level &) const;
+	void clear_transition_state();
+	void seed_observation(const TemperatureState &, std::chrono::steady_clock::time_point);
+	void update_down_credit(ThermalZone, std::chrono::steady_clock::duration, const Level &);
+	std::chrono::steady_clock::duration maximum_observation_gap() const;
+	void transition(const TemperatureState &, bool upward,
+		std::chrono::steady_clock::time_point, const Level &);
+	bool temporal_control_ = false;
+	bool emergency_active_ = false;
+	opt<std::chrono::steady_clock::time_point> up_since_;
+	std::chrono::steady_clock::duration down_credit_{};
+	opt<std::chrono::steady_clock::time_point> down_confirm_since_;
+	opt<ThermalZone> last_zone_;
+	opt<std::chrono::steady_clock::time_point> last_update_;
+	opt<vector<int>> emergency_limits_;
+	// Fixed for the MVP; this is deliberately not another user setting yet.
+	static constexpr seconds down_confirm_delay = seconds(3);
 };
 
 
@@ -67,6 +90,8 @@ protected:
 	int level_n_;
 	vector<int> lower_limit_;
 	vector<int> upper_limit_;
+	opt<seconds> up_delay_;
+	opt<seconds> down_delay_;
 public:
 	Level(int level, int lower_limit, int upper_limit);
 	Level(string level, int lower_limit, int upper_limit);
@@ -77,6 +102,10 @@ public:
 
 	const vector<int> &lower_limit() const;
 	const vector<int> &upper_limit() const;
+	void set_delays(opt<seconds> up_delay, opt<seconds> down_delay);
+	bool has_delay_fields() const;
+	seconds up_delay() const;
+	seconds down_delay() const;
 
 	virtual bool up(const TemperatureState &) const = 0;
 	virtual bool down(const TemperatureState &) const = 0;
@@ -122,6 +151,7 @@ public:
 	static const Config *read_config(const vector<string> &filenames);
 	void add_sensor(unique_ptr<SensorDriver> &&sensor);
 	void add_fan_config(unique_ptr<FanConfig> &&fan_cfg);
+	void set_emergency_temp(const vector<int> &limits);
 	void ensure_consistency() const;
 	void init_fans() const;
 	TemperatureState init_sensors() const;
@@ -138,6 +168,7 @@ private:
 	void try_init_driver(Driver &drv) const;
 	vector<unique_ptr<SensorDriver>> sensors_;
 	vector<unique_ptr<FanConfig>> temp_mappings_;
+	opt<vector<int>> emergency_temp_;
 };
 
 

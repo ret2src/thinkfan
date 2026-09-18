@@ -165,7 +165,8 @@ void HwmonSensorDriver::init()
 void HwmonSensorDriver::read_temps_()
 {
 	temp_state_.add_temp(
-		readstream(path()) / 1000 + correction_[0]
+		readstream(path()) / 1000,
+		correction_[0]
 	);
 }
 
@@ -267,7 +268,7 @@ void TpSensorDriver::read_temps_()
 		if (f.bad())
 			throw IOerror(MSG_T_GET(path()), errno);
 		if (!f.fail() && in_use_[tidx++])
-			temp_state_.add_temp(tmp + correction_[cidx++]);
+			temp_state_.add_temp(tmp, correction_[cidx++]);
 	}
 }
 
@@ -348,7 +349,7 @@ void AtasmartSensorDriver::read_temps_()
 			throw SystemError(MSG_T_GET(path()) + std::to_string(tmp) + " isn't a valid temperature.");
 		}
 
-		temp_state_.add_temp(int(tmp) + correction_[0]);
+		temp_state_.add_temp(int(tmp), correction_[0]);
 	}
 }
 
@@ -507,7 +508,7 @@ void LMSensorsDriver::read_temps_()
 	size_t index = 0;
 	for (double real_value : libsensors_iface_->get_temps(this))
 		temp_state_.add_temp(
-			int(real_value) + correction_[index++]
+			int(real_value), correction_[index++]
 		);
 }
 

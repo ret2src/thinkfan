@@ -67,6 +67,7 @@ vector<std::string> config_files { DEFAULT_CONFIG };
 #endif
 
 std::atomic<int> interrupted(0);
+std::atomic<unsigned int> temporal_reset_generation(0);
 
 #ifdef USE_ATASMART
 /** Do Not Disturb disk, i.e. don't get temperature from a sleeping disk */
@@ -155,6 +156,7 @@ void sig_handler(int signum) {
 		log(TF_NFY) << "Received SIGUSR2: Re-initializing fan control." << flush;
 		break;
 	case SIGPWR:
+		temporal_reset_generation++;
 		tolerate_errors = 4;
 		log(TF_NFY) << "Going to sleep: Will allow sensor read errors for the next "
 			<< std::to_string(tolerate_errors) << " loops." << flush;
@@ -165,6 +167,7 @@ void sig_handler(int signum) {
 void run(const Config &config)
 {
 	tmp_sleeptime = sleeptime;
+	unsigned int observed_reset_generation = temporal_reset_generation.load();
 
 	for (const unique_ptr<SensorDriver> &sensor : config.sensors())
 		sensor->read_temps();
@@ -181,14 +184,22 @@ void run(const Config &config)
 		if (unlikely(interrupted))
 			break;
 
+		if (observed_reset_generation != temporal_reset_generation.load()) {
+			for (auto &fan_config : config.fan_configs())
+				fan_config->reset_temporal_state();
+			observed_reset_generation = temporal_reset_generation.load();
+			log(TF_DBG) << "Reset temporal qualification after suspend notification" << flush;
+		}
+
 		for (const unique_ptr<SensorDriver> &sensor : config.sensors())
 			sensor->read_temps();
 
 		if (unlikely(tolerate_errors) > 0)
 			tolerate_errors--;
 
+		const auto now = std::chrono::steady_clock::now();
 		for (auto &fan_config : config.fan_configs())
-			did_something |= fan_config->set_fanspeed(temp_state);
+			did_something |= fan_config->set_fanspeed(temp_state, now);
 
 		if (unlikely(did_something))
 			log(TF_NFY) << temp_state << " -> " << config.fan_configs() << flush;
@@ -309,6 +320,7 @@ void noop()
 } // namespace thinkfan
 
 
+#ifndef THINKFAN_NO_MAIN
 int main(int argc, char **argv) {
 	using namespace thinkfan;
 
@@ -449,7 +461,5 @@ int main(int argc, char **argv) {
 
 	return 0;
 }
-
-
-
+#endif
 
