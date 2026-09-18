@@ -137,9 +137,19 @@ void TpFanDriver::ping_watchdog_and_depulse(const Level &level)
 		std::this_thread::sleep_for(depulse_);
 		set_speed(level);
 	}
-	else if (last_watchdog_ping_ + watchdog_ - sleeptime <= std::chrono::system_clock::now()) {
-		log(TF_DBG) << "Watchdog ping" << flush;
-		set_speed(level);
+	else {
+		const auto now = std::chrono::system_clock::now();
+		if (last_watchdog_ping_ + watchdog_ - sleeptime <= now) {
+			log(TF_DBG) << "Watchdog ping" << flush;
+			// Rewriting the fan level can briefly spin up some newer ThinkPads at level 0.
+			// Refresh the thinkpad_acpi watchdog directly instead (upstream PR #248).
+			std::fstream f(path_);
+			if (!(f.is_open() && f.good()))
+				throw IOerror(MSG_FAN_INIT(path_), errno);
+			if (!(f << "watchdog " << watchdog_.count() << std::flush))
+				throw IOerror(MSG_FAN_INIT(path_), errno);
+			last_watchdog_ping_ = now;
+		}
 	}
 }
 
