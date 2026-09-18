@@ -215,6 +215,77 @@ void test_explicit_partial_match_is_order_independent()
 	CHECK(reverse_order_error.find("Found only some requested hwmon files") != string::npos);
 }
 
+void test_name_lookup_and_ambiguity_errors()
+{
+	TemporaryDirectory directory;
+	directory.add_file("hwmon0/name", "unrelated\n");
+	directory.add_file("hwmon0/temp1_input");
+	directory.add_file("hwmon1/name", "coretemp\n");
+	directory.add_file("hwmon1/temp2_input");
+	directory.add_file("hwmon1/temp1_input");
+
+	const opt<const string> name = string("coretemp");
+	const vector<string> paths = lookup_all<SensorDriver>(directory.path(), name);
+	CHECK((paths == vector<string>{
+		(directory.path() / "hwmon1/temp1_input").string(),
+		(directory.path() / "hwmon1/temp2_input").string()
+	}));
+
+	const string missing_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			directory.path().string(), opt<const string>{string("missing")}, nullopt, nullopt
+		);
+		interface.lookup();
+	});
+	CHECK(missing_error.find("Could not find an hwmon with this name: missing") != string::npos);
+
+	TemporaryDirectory ambiguous_directory;
+	ambiguous_directory.add_file("hwmon0/name", "coretemp\n");
+	ambiguous_directory.add_file("hwmon1/name", "coretemp\n");
+	const string multiple_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			ambiguous_directory.path().string(), name, nullopt, nullopt
+		);
+		interface.lookup();
+	});
+	CHECK(multiple_error.find("Found multiple hwmons with this name") != string::npos);
+}
+
+void test_model_lookup_and_ambiguity_errors()
+{
+	TemporaryDirectory directory;
+	directory.add_file("hwmon0/model", "unrelated\n");
+	directory.add_file("hwmon1/model", "NVMe Composite\n");
+	directory.add_file("hwmon1/temp10_input");
+	directory.add_file("hwmon1/temp1_input");
+
+	const opt<const string> model = string("NVMe Composite");
+	const vector<string> paths = lookup_all<SensorDriver>(directory.path(), nullopt, model);
+	CHECK((paths == vector<string>{
+		(directory.path() / "hwmon1/temp1_input").string(),
+		(directory.path() / "hwmon1/temp10_input").string()
+	}));
+
+	const string missing_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			directory.path().string(), nullopt, opt<const string>{string("missing")}, nullopt
+		);
+		interface.lookup();
+	});
+	CHECK(missing_error.find("Could not find a hwmon with this model: missing") != string::npos);
+
+	TemporaryDirectory ambiguous_directory;
+	ambiguous_directory.add_file("hwmon0/model", "NVMe Composite\n");
+	ambiguous_directory.add_file("hwmon1/model", "NVMe Composite\n");
+	const string multiple_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			ambiguous_directory.path().string(), nullopt, model, nullopt
+		);
+		interface.lookup();
+	});
+	CHECK(multiple_error.find("Found multiple hwmons with this name") != string::npos);
+}
+
 } // namespace
 
 int main()
@@ -225,5 +296,7 @@ int main()
 	test_explicit_indices_preserve_order();
 	test_explicit_no_match_recurses_into_hwmon_directory();
 	test_explicit_partial_match_is_order_independent();
+	test_name_lookup_and_ambiguity_errors();
+	test_model_lookup_and_ambiguity_errors();
 	return 0;
 }
