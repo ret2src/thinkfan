@@ -73,7 +73,7 @@ static opt<unsigned int> parse_indexed_filename(
 static int filter_hwmon_dirs(const struct dirent *entry)
 {
 	return (entry->d_type == DT_DIR || entry->d_type == DT_LNK)
-		&& (string(entry->d_name) == "hwmon" || string(entry->d_name) == "device");
+		&& (!strncmp("hwmon", entry->d_name, 5) || !strcmp("device", entry->d_name));
 }
 
 
@@ -255,31 +255,59 @@ vector<string> HwmonInterface<HwmonT>::find_hwmons_by_indices(
 ) {
 	constexpr unsigned char max_depth = 3;
 
-	try {
-		return find_files(path, indices);
-	}
-	catch (IOerror &) {
-		if (depth <= max_depth) {
-			vector<string> hwmon_dirs = dir_entries<filter_hwmon_dirs>(path);
-			if (hwmon_dirs.empty())
-				throw IOerror("Error scanning " + path + ": ", errno);
-
-			vector<string> rv;
-			for (const filesystem::path hwmon_dir : hwmon_dirs) {
-				rv = HwmonInterface<HwmonT>::find_hwmons_by_indices(
-					hwmon_dir,
-					indices,
-					depth + 1
-				);
-				if (rv.size())
-					break;
-			}
-
-			return rv;
-		}
+	vector<string> filenames;
+	for (unsigned int index : indices)
+		filenames.push_back(filename(index));
+	vector<string> found_paths;
+	vector<string> missing_files;
+	for (const filesystem::path fname : filenames) {
+		const filesystem::path fpath(path + "/" + fname.string());
+		std::ifstream f(fpath);
+		if (f.is_open() && f.good())
+			found_paths.push_back(fpath);
 		else
-			throw DriverInitError("Could not find an `hwmon*' directory or `temp*_input' file in " + path + ".");
+			missing_files.push_back(fname);
 	}
+
+	if (!found_paths.empty() && !missing_files.empty()) {
+		string missing;
+		for (const string &filename : missing_files) {
+			if (!missing.empty())
+				missing += ", ";
+			missing += filename;
+		}
+		throw DriverInitError(
+			"Found only some requested hwmon files in " + path
+			+ "; missing: " + missing
+		);
+	}
+
+	if (missing_files.empty())
+		return found_paths;
+
+	if (depth <= max_depth) {
+		for (const filesystem::path hwmon_dir : dir_entries<filter_hwmon_dirs>(path)) {
+			vector<string> found = HwmonInterface<HwmonT>::find_hwmons_by_indices(
+				hwmon_dir,
+				indices,
+				depth + 1
+			);
+			if (!found.empty())
+				return found;
+		}
+	}
+
+	if (depth == 0) {
+		string requested;
+		for (const string &filename : filenames) {
+			if (!requested.empty())
+				requested += ", ";
+			requested += filename;
+		}
+		throw DriverInitError("Could not find requested files [" + requested + "] in " + path + ".");
+	}
+
+	return {};
 }
 
 

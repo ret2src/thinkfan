@@ -155,6 +155,66 @@ void test_no_automatic_matches_fail_cleanly()
 	CHECK(fan_error.find("iterator out of bounds") == string::npos);
 }
 
+void test_explicit_indices_preserve_order()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp1_input");
+	directory.add_file("temp2_input");
+
+	const vector<string> paths = lookup_all<SensorDriver>(
+		directory.path(),
+		nullopt,
+		nullopt,
+		vector<unsigned int>{2, 1}
+	);
+	CHECK((paths == vector<string>{
+		(directory.path() / "temp2_input").string(),
+		(directory.path() / "temp1_input").string()
+	}));
+}
+
+void test_explicit_no_match_recurses_into_hwmon_directory()
+{
+	TemporaryDirectory directory;
+	directory.add_file("hwmon0/temp1_input");
+	directory.add_file("hwmon0/temp2_input");
+
+	const vector<string> paths = lookup_all<SensorDriver>(
+		directory.path(),
+		nullopt,
+		nullopt,
+		vector<unsigned int>{1, 2}
+	);
+	CHECK((paths == vector<string>{
+		(directory.path() / "hwmon0/temp1_input").string(),
+		(directory.path() / "hwmon0/temp2_input").string()
+	}));
+}
+
+void test_explicit_partial_match_is_order_independent()
+{
+	TemporaryDirectory directory;
+	directory.add_file("temp1_input");
+
+	const string first_order_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			directory.path().string(), nullopt, nullopt, vector<unsigned int>{1, 2}
+		);
+		interface.lookup();
+	});
+	CHECK(first_order_error.find("temp2_input") != string::npos);
+	CHECK(first_order_error.find("Found only some requested hwmon files") != string::npos);
+
+	const string reverse_order_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			directory.path().string(), nullopt, nullopt, vector<unsigned int>{2, 1}
+		);
+		interface.lookup();
+	});
+	CHECK(reverse_order_error.find("temp2_input") != string::npos);
+	CHECK(reverse_order_error.find("Found only some requested hwmon files") != string::npos);
+}
+
 } // namespace
 
 int main()
@@ -162,5 +222,8 @@ int main()
 	test_numeric_temperature_order_and_exact_matching();
 	test_numeric_pwm_order_and_exact_matching();
 	test_no_automatic_matches_fail_cleanly();
+	test_explicit_indices_preserve_order();
+	test_explicit_no_match_recurses_into_hwmon_directory();
+	test_explicit_partial_match_is_order_independent();
 	return 0;
 }
