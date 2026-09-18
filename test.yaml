@@ -1,0 +1,96 @@
+# ThinkPad T16 Gen 3 — tuned quiet temporal profile
+#
+# Design goals:
+# - fan-off through ordinary light/bursty use
+# - tolerate high laptop CPU temperatures without chasing Turbo spikes
+# - progressively reduce patience as temperatures approach the thermal ceiling
+# - reach normal maximum cooling before the emergency path is needed
+# - use long cooldown evidence at low/mid fan levels to prevent chatter
+# - retreat somewhat faster from very loud high fan levels once real cooling
+#   has been demonstrated
+
+sensors:
+  - hwmon: /sys/class/hwmon
+    name: coretemp
+    indices: [1] # CPU package
+
+  - hwmon: /sys/class/hwmon
+    name: nvme
+    indices: [1] # NVMe composite
+
+fans:
+  - tpacpi: /proc/acpi/ibm/fan
+
+# Raw-temperature safety path.
+# Keep independent from normal dwell/cooldown logic.
+safety:
+  emergency_temp: [105, 82]
+
+levels:
+  # Fan off.
+  #
+  # Stay completely silent during ordinary bursty activity and allow the CPU
+  # to operate hot for short periods. Sustained temperature above 78°C is
+  # enough to request the first quiet fan level.
+  - speed: 0
+    upper_limit: [78, 65]
+    up_delay: 20s
+
+  # ~2180 RPM — quiet/background cooling.
+  #
+  # Once entered, stay here until the CPU has convincingly cooled below 72°C.
+  # Do not react upward to ordinary 80–85°C operation.
+  - speed: 1
+    lower_limit: [72, 60]
+    upper_limit: [88, 70]
+    up_delay: 12s
+    down_delay: 45s
+
+  # ~2820 RPM — sustained warm workload.
+  #
+  # Wide hysteresis against level 1 and substantial cooldown memory are
+  # intentional: this should not bounce 1 <-> 2 during intermittent Turbo.
+  - speed: 2
+    lower_limit: [82, 68]
+    upper_limit: [94, 75]
+    up_delay: 8s
+    down_delay: 45s
+
+  # ~3140 RPM — clearly sustained heavy workload.
+  #
+  # Require genuine cooling below ~89°C before returning to level 2.
+  - speed: 3
+    lower_limit: [89, 72]
+    upper_limit: [98, 78]
+    up_delay: 5s
+    down_delay: 45s
+
+  # Level 4 omitted: acoustically equivalent to 3 on this machine.
+
+  # ~3900 RPM — high cooling.
+  #
+  # Above ~100°C we stop being very patient about acoustics.
+  - speed: 5
+    lower_limit: [93, 76]
+    upper_limit: [100, 80]
+    up_delay: 3s
+    down_delay: 35s
+
+  # Very high cooling.
+  #
+  # This level exists mainly as a short staging point toward maximum cooling.
+  # If the CPU is still >=101°C on the next observation, go to level 7
+  # without an additional dwell period.
+  - speed: 6
+    lower_limit: [97, 78]
+    upper_limit: [101, 81]
+    up_delay: 0s
+    down_delay: 25s
+
+  # Manual maximum.
+  #
+  # Normal control should now reach this before the 105°C emergency threshold
+  # during a genuinely sustained near-limit workload.
+  - speed: 7
+    lower_limit: [99, 79]
+    down_delay: 30s

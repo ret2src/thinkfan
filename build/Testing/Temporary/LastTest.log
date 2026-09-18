@@ -1,0 +1,419 @@
+Start testing: Sep 18 22:52 CEST
+----------------------------------------------------------
+1/2 Testing: thinkfan_temporal_mapping
+1/2 Test: thinkfan_temporal_mapping
+Command: "/home/user/.local/share/Cryptomator/mnt/SVA/Projects/Tools/t3/thinkfan/build/thinkfan_temporal_tests"
+Directory: /home/user/.local/share/Cryptomator/mnt/SVA/Projects/Tools/t3/thinkfan/build
+"thinkfan_temporal_mapping" start time: Sep 18 22:52 CEST
+Output:
+----------------------------------------------------------
+Cooldown evidence: 0.000000 / 45 s; decaying above upper threshold
+Upward qualification: 4.000000 / 8 s
+Upward qualification reset after 5.000000 s; cooldown evidence retained: 0.000000 / 45 s
+Cooldown evidence: 0.000000 / 45 s; paused in hysteresis band
+Cooldown evidence: 0.000000 / 45 s; decaying above upper threshold
+Upward qualification: 0.000000 / 8 s
+Cooldown evidence: 0.000000 / 45 s; decaying above upper threshold
+Upward qualification: 7.000000 / 8 s
+Cooldown evidence: 0.000000 / 45 s; decaying above upper threshold
+Upward qualification: 8.000000 / 8 s
+Fan transition level 1 -> level 2; reason: upper threshold continuously observed for 8.000000 s; temperature: (105); threshold: (100); configured dwell: 8 s
+Cooldown evidence: 0.000000 / 45 s; accumulating below lower threshold
+Cooldown evidence: 10.000000 / 45 s; accumulating below lower threshold
+Downward confirmation: satisfied (10.000000 s continuous)
+Cooldown evidence: 20.000000 / 45 s; accumulating below lower threshold
+Downward confirmation: satisfied (20.000000 s continuous)
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 35.000000 / 45 s; paused in hysteresis band
+Cooldown evidence: 35.000000 / 45 s; paused in hysteresis band
+Cooldown evidence: 35.000000 / 45 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 37.000000 / 45 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Cooldown evidence: 45.000000 / 45 s; accumulating below lower threshold
+Downward confirmation: satisfied (10.000000 s continuous)
+Fan transition level 1 -> level 0; reason: cooldown evidence 45.000000 / 45 s and lower threshold continuously satisfied for 10.000000 s; temperature: (69); threshold: (70); configured dwell: 45 s
+Cooldown evidence: 0.000000 / 45 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 20.000000 / 45 s; paused in hysteresis band
+Cooldown evidence: 20.000000 / 45 s; decaying above upper threshold
+Upward qualification: 0.000000 / 8 s
+Cooldown evidence: 17.000000 / 45 s; decaying above upper threshold
+Upward qualification: 3.000000 / 8 s
+Upward qualification reset after 4.000000 s; cooldown evidence retained: 16.000000 / 45 s
+Cooldown evidence: 16.000000 / 45 s; paused in hysteresis band
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Cooldown evidence: 20.000000 / 20 s; decaying above upper threshold
+Upward qualification: 0.000000 / 100 s
+Cooldown evidence: 17.000000 / 20 s; decaying above upper threshold
+Upward qualification: 3.000000 / 100 s
+Upward qualification reset after 3.000000 s; cooldown evidence retained: 17.000000 / 20 s
+Cooldown evidence: 17.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: satisfied (3.000000 s continuous)
+Fan transition level 1 -> level 0; reason: cooldown evidence 20.000000 / 20 s and lower threshold continuously satisfied for 3.000000 s; temperature: (69); threshold: (70); configured dwell: 20 s
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 20.000000 / 20 s; decaying above upper threshold
+Upward qualification: 0.000000 / 8 s
+Cooldown evidence: 17.000000 / 20 s; decaying above upper threshold
+Upward qualification: 3.000000 / 8 s
+Upward qualification reset after 3.000000 s; cooldown evidence retained: 17.000000 / 20 s
+Cooldown evidence: 17.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 17.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 19.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 5.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 5.000000 / 20 s; decaying above upper threshold
+Upward qualification: 0.000000 / 100 s
+Cooldown evidence: 0.000000 / 20 s; decaying above upper threshold
+Upward qualification: 30.000002 / 100 s
+Upward qualification reset after 30.000002 s; cooldown evidence retained: 0.000000 / 20 s
+Cooldown evidence: 0.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 17.999998 / 20 s; accumulating below lower threshold
+Downward confirmation: satisfied (17.999998 s continuous)
+Cooldown evidence: 20.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: satisfied (20.000000 s continuous)
+Fan transition level 1 -> level 0; reason: cooldown evidence 20.000000 / 20 s and lower threshold continuously satisfied for 20.000000 s; temperature: (69); threshold: (70); configured dwell: 20 s
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 10.000000 / 20 s; paused in hysteresis band
+Cooldown evidence: 10.000000 / 20 s; decaying above upper threshold
+Upward qualification: 0.000000 / 8 s
+Cooldown evidence: 2.000000 / 20 s; decaying above upper threshold
+Upward qualification: 8.000000 / 8 s
+Fan transition level 1 -> level 2; reason: upper threshold continuously observed for 8.000000 s; temperature: (105); threshold: (100); configured dwell: 8 s
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 0.000000 / 3 s
+Cooldown evidence: 2.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Downward confirmation reset in hysteresis band
+Cooldown evidence: 10.000000 / 20 s; paused in hysteresis band
+WARNING: Emergency temperature reached; bypassing normal fan delays; raw temperature: (99)
+Emergency temperature cleared; resuming normal fan control
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Cooldown evidence: 19.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: satisfied (19.000000 s continuous)
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Cooldown evidence: 10.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: satisfied (10.000000 s continuous)
+Reset temporal qualification after observation gap of 90.000000 s
+Cooldown evidence: 0.000000 / 20 s; accumulating below lower threshold
+Cooldown evidence: 2.000000 / 20 s; accumulating below lower threshold
+Downward confirmation: 2.000000 / 3 s
+Cooldown evidence: 0.000000 / 0 s; accumulating below lower threshold
+Fan transition level 1 -> level 0; reason: cooldown evidence 0.000000 / 0 s and lower threshold continuously satisfied for 0.000000 s; temperature: (69); threshold: (70); configured dwell: 0 s
+Fan transition level 1 -> level 2; reason: upper threshold continuously observed for 0.000000 s; temperature: (105); threshold: (100); configured dwell: 0 s
+Cooldown evidence: 0.000000 / 5 s; accumulating below lower threshold
+Cooldown evidence: 5.000000 / 5 s; accumulating below lower threshold
+Downward confirmation: satisfied (5.000000 s continuous)
+Fan transition level 1 -> level 0; reason: cooldown evidence 5.000000 / 5 s and lower threshold continuously satisfied for 5.000000 s; temperature: (69, 74); threshold: (70, 75); configured dwell: 5 s
+/tmp/thinkfan-tpacpi-watchdog-test: Saved initial state: 0.
+Watchdog ping
+/tmp/thinkfan-tpacpi-watchdog-test: Restoring initial state: 0.
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"thinkfan_temporal_mapping" end time: Sep 18 22:52 CEST
+"thinkfan_temporal_mapping" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: thinkfan_hwmon
+2/2 Test: thinkfan_hwmon
+Command: "/home/user/.local/share/Cryptomator/mnt/SVA/Projects/Tools/t3/thinkfan/build/thinkfan_hwmon_tests"
+Directory: /home/user/.local/share/Cryptomator/mnt/SVA/Projects/Tools/t3/thinkfan/build
+"thinkfan_hwmon" start time: Sep 18 22:52 CEST
+Output:
+----------------------------------------------------------
+/tmp/thinkfan-hwmon-LXj3S7/pwm1: Saved initial state: 2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.
+/tmp/thinkfan-hwmon-LXj3S7/pwm1: Restoring initial state: 2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.
+/tmp/thinkfan-hwmon-Cbj5ZD/pwm1: Saved initial state: 2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.
+/tmp/thinkfan-hwmon-Cbj5ZD/pwm1: Restoring initial state: 2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"thinkfan_hwmon" end time: Sep 18 22:52 CEST
+"thinkfan_hwmon" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 18 22:52 CEST

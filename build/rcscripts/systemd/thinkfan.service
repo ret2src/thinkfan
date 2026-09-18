@@ -1,0 +1,16 @@
+[Unit]
+Description=thinkfan 2.0.0-15-gf473831
+Documentation=man:thinkfan
+After=sysinit.target
+After=systemd-modules-load.service
+
+[Service]
+Type=forking
+ExecStart=/usr/local/sbin/thinkfan $THINKFAN_ARGS
+PIDFile=/run/thinkfan.pid
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target
+Also=thinkfan-sleep.service
+Also=thinkfan-wakeup.service
