@@ -176,13 +176,24 @@ void test_explicit_indices_preserve_order()
 	directory.add_file("temp1_input");
 	directory.add_file("temp2_input");
 
-	const vector<string> paths = lookup_all<SensorDriver>(
+	const vector<string> forward_paths = lookup_all<SensorDriver>(
+		directory.path(),
+		nullopt,
+		nullopt,
+		vector<unsigned int>{1, 2}
+	);
+	CHECK((forward_paths == vector<string>{
+		(directory.path() / "temp1_input").string(),
+		(directory.path() / "temp2_input").string()
+	}));
+
+	const vector<string> reverse_paths = lookup_all<SensorDriver>(
 		directory.path(),
 		nullopt,
 		nullopt,
 		vector<unsigned int>{2, 1}
 	);
-	CHECK((paths == vector<string>{
+	CHECK((reverse_paths == vector<string>{
 		(directory.path() / "temp2_input").string(),
 		(directory.path() / "temp1_input").string()
 	}));
@@ -194,15 +205,26 @@ void test_explicit_no_match_recurses_into_hwmon_directory()
 	directory.add_file("hwmon0/temp1_input");
 	directory.add_file("hwmon0/temp2_input");
 
-	const vector<string> paths = lookup_all<SensorDriver>(
+	const vector<string> forward_paths = lookup_all<SensorDriver>(
 		directory.path(),
 		nullopt,
 		nullopt,
 		vector<unsigned int>{1, 2}
 	);
-	CHECK((paths == vector<string>{
+	CHECK((forward_paths == vector<string>{
 		(directory.path() / "hwmon0/temp1_input").string(),
 		(directory.path() / "hwmon0/temp2_input").string()
+	}));
+
+	const vector<string> reverse_paths = lookup_all<SensorDriver>(
+		directory.path(),
+		nullopt,
+		nullopt,
+		vector<unsigned int>{2, 1}
+	);
+	CHECK((reverse_paths == vector<string>{
+		(directory.path() / "hwmon0/temp2_input").string(),
+		(directory.path() / "hwmon0/temp1_input").string()
 	}));
 }
 
@@ -228,6 +250,19 @@ void test_explicit_partial_match_is_order_independent()
 	});
 	CHECK(reverse_order_error.find("temp2_input") != string::npos);
 	CHECK(reverse_order_error.find("Found only some requested hwmon files") != string::npos);
+	CHECK(first_order_error == reverse_order_error);
+
+	TemporaryDirectory larger_directory;
+	larger_directory.add_file("temp1_input");
+	larger_directory.add_file("temp3_input");
+	const string larger_error = expect_error([&] {
+		HwmonInterface<SensorDriver> interface(
+			larger_directory.path().string(), nullopt, nullopt, vector<unsigned int>{3, 2, 1}
+		);
+		interface.lookup();
+	});
+	CHECK(larger_error.find("Found only some requested hwmon files") != string::npos);
+	CHECK(larger_error.find("temp2_input") != string::npos);
 }
 
 void test_name_lookup_and_ambiguity_errors()
