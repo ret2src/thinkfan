@@ -56,6 +56,9 @@ public:
 	void add_directory(const string &relative_path)
 	{ filesystem::create_directories(path_ / relative_path); }
 
+	void add_symlink(const string &target, const string &relative_path)
+	{ filesystem::create_symlink(target, path_ / relative_path); }
+
 private:
 	filesystem::path path_;
 };
@@ -452,6 +455,29 @@ void test_model_lookup_and_ambiguity_errors()
 	CHECK(multiple_error.find("Found multiple hwmons with this name") != string::npos);
 }
 
+void test_recursive_lookup_inspects_directory_candidates()
+{
+	TemporaryDirectory target;
+	target.add_file("name", "target-name\n");
+	target.add_file("model", "target-model\n");
+	target.add_file("temp1_input");
+
+	TemporaryDirectory directory;
+	directory.add_file("not-a-directory", "not a hwmon\n");
+	directory.add_symlink("not-a-directory", "not-a-directory-link");
+	directory.add_symlink(target.path().string(), "candidate");
+
+	const vector<string> expected_paths = {
+		(directory.path() / "candidate/temp1_input").string()
+	};
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(), opt<const string>{string("target-name")}
+	) == expected_paths));
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(), nullopt, opt<const string>{string("target-model")}
+	) == expected_paths));
+}
+
 } // namespace
 
 int main()
@@ -471,5 +497,6 @@ int main()
 	test_explicit_partial_match_is_order_independent();
 	test_name_lookup_and_ambiguity_errors();
 	test_model_lookup_and_ambiguity_errors();
+	test_recursive_lookup_inspects_directory_candidates();
 	return 0;
 }
