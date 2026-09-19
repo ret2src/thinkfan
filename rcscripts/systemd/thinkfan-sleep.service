@@ -4,7 +4,7 @@ Before=sleep.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/pkill -x -pwr thinkfan
+ExecStart=-/usr/bin/systemctl kill --kill-whom=main --signal=SIGPWR thinkfan.service
 # Hack: Since the signal handler races with the sleep, we need to delay a bit
 ExecStart=sleep 1
 

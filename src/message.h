@@ -146,9 +146,8 @@ template<class ErrT, class... ArgTs> void error(const ArgTs &... args) {
 #define MSG_DEPULSE(delay, time) "Disengaging the fan controller for " \
 	<< time << " seconds every " << delay << " seconds"
 #define MSG_SYSFS_SAFE "Using safe but wasteful way of setting PWM value. Check README to know more."
-#define MSG_RUNNING PID_FILE " already exists. Either thinkfan is " \
-	"already running, or it was killed by SIGKILL. If you're sure thinkfan" \
-	" is not running, delete " PID_FILE " manually."
+#define MSG_RUNNING(path) string(path) + " refers to a running process; another thinkfan " \
+	"instance may already be active."
 #define MSG_SENSOR_LOST "A sensor has vanished! Exiting since there's no " \
 	"safe way of handling this."
 

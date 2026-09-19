@@ -33,6 +33,10 @@
 #include <iostream>
 #include <memory>
 #include <cmath>
+#include <cerrno>
+#include <limits>
+#include <sstream>
+#include <iterator>
 
 #include <unistd.h>
 
@@ -79,33 +83,79 @@ bool dnd_disk = false;
 
 PidFileHolder *PidFileHolder::instance_ = nullptr;
 
-PidFileHolder::PidFileHolder(::pid_t pid)
-: pid_file_(PID_FILE, std::ios_base::in)
+PidFileInfo inspect_pid_file(const string &path)
 {
-	if (!pid_file_.fail())
-		error<SystemError>(MSG_RUNNING);
+	errno = 0;
+	ifstream existing_file(path);
+	if (!existing_file.is_open()) {
+		if (errno == ENOENT)
+			return {PidFileState::missing, 0};
+		throw IOerror("Opening " + path + ": ", errno ? errno : EIO);
+	}
+
+	string contents((std::istreambuf_iterator<char>(existing_file)), {});
+	if (existing_file.bad())
+		throw IOerror("Reading " + path + ": ", errno ? errno : EIO);
+
+	std::istringstream pid_stream(contents);
+	long long parsed_pid;
+	char extra;
+	if (!(pid_stream >> parsed_pid) || (pid_stream >> extra)
+			|| parsed_pid <= 0
+			|| parsed_pid > std::numeric_limits<::pid_t>::max())
+		return {PidFileState::malformed, 0};
+
+	const auto pid = static_cast<::pid_t>(parsed_pid);
+	if (::kill(pid, 0) == 0 || errno == EPERM)
+		return {PidFileState::live, pid};
+	if (errno == ESRCH)
+		return {PidFileState::stale, pid};
+	throw IOerror("Checking process " + std::to_string(pid) + " from " + path + ": ", errno);
+}
+
+PidFileHolder::PidFileHolder(::pid_t pid, const string &path)
+: path_(path)
+{
+	const PidFileInfo info = inspect_pid_file(path_);
+	if (info.state == PidFileState::live)
+		error<SystemError>(MSG_RUNNING(path_));
+	if (info.state == PidFileState::stale) {
+		log(TF_WRN) << "Removing stale PID file " << path_
+		            << " for non-existent PID " << info.pid << "." << flush;
+		if (::unlink(path_.c_str()) == -1)
+			throw IOerror("Deleting " + path_ + ": ", errno);
+	}
+	else if (info.state == PidFileState::malformed) {
+		log(TF_WRN) << "Removing malformed PID file " << path_ << "." << flush;
+		if (::unlink(path_.c_str()) == -1)
+			throw IOerror("Deleting " + path_ + ": ", errno);
+	}
+
 	if (instance_)
 		throw Bug("Attempt to initialize PID file twice");
-	pid_file_.close();
-	pid_file_.open(PID_FILE, std::ios_base::out | std::ios_base::trunc);
+	pid_file_.open(path_, std::ios_base::out | std::ios_base::trunc);
 	if (!(pid_file_ << pid << std::flush))
-		error<IOerror>("Writing to " PID_FILE ": ", errno);
+		error<IOerror>("Writing " + path_ + ": ", errno ? errno : EIO);
 	instance_ = this;
 }
 
 PidFileHolder::~PidFileHolder()
-{ remove_file(); }
+{
+	remove_file();
+	if (instance_ == this)
+		instance_ = nullptr;
+}
 
 bool PidFileHolder::file_exists()
-{ return !ifstream(PID_FILE).fail(); }
+{ return inspect_pid_file(PID_FILE).state != PidFileState::missing; }
 
 
 void PidFileHolder::remove_file()
 {
 	if (pid_file_.is_open()) {
 		pid_file_.close();
-		if (::unlink(PID_FILE) == -1)
-			log(TF_ERR) << "Deleting " PID_FILE ": " << errno << "." << flush;
+		if (::unlink(path_.c_str()) == -1)
+			log(TF_ERR) << "Deleting " << path_ << ": " << errno << "." << flush;
 	}
 }
 
@@ -365,12 +415,6 @@ int main(int argc, char **argv) {
 		default:
 			return 3;
 		}
-
-#if defined(PID_FILE)
-		if (PidFileHolder::file_exists())
-			error<SystemError>(MSG_RUNNING);
-#endif
-
 		if (daemonize) {
 			LogLevel old_lvl = Logger::instance().log_lvl();
 			{
@@ -462,4 +506,3 @@ int main(int argc, char **argv) {
 	return 0;
 }
 #endif
-

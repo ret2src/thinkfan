@@ -112,9 +112,23 @@ class LMSensorsDriver;
 
 #if defined(PID_FILE)
 
+enum class PidFileState {
+	missing,
+	live,
+	stale,
+	malformed
+};
+
+struct PidFileInfo {
+	PidFileState state;
+	::pid_t pid;
+};
+
+PidFileInfo inspect_pid_file(const string &path);
+
 class PidFileHolder {
 public:
-	PidFileHolder(::pid_t pid);
+	PidFileHolder(::pid_t pid, const string &path = PID_FILE);
 	~PidFileHolder();
 	static bool file_exists();
 	static void cleanup();
@@ -122,6 +136,7 @@ private:
 	void remove_file();
 
 	std::fstream pid_file_;
+	string path_;
 	static PidFileHolder *instance_;
 };
 

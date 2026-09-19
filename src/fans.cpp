@@ -286,8 +286,7 @@ void HwmonFanDriver::set_speed(const Level &level)
 			log(TF_WRN) << path() << ": WARNING: Userspace fan control had to be automatically re-initialized." << flush;
 #if defined(HAVE_SYSTEMD)
 			log(TF_WRN) << "This should have been taken care of when enabling the thinkfan systemd service." << flush
-			            << "If thinkfan.service is enabled, the following services should also have be enabled as a dependency:" << flush
-			            << "thinkfan-hibernate.service, thinkfan-hybrid-suspend.service and thinkfan-suspend.service" << flush;
+			            << "If thinkfan.service is enabled, thinkfan-sleep.service and thinkfan-wakeup.service should also be enabled." << flush;
 #else
 			log(TF_WRN) << "Please arrange for a SIGUSR2 to be sent to thinkfan after resuming from suspend." << flush;
 #endif
