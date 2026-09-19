@@ -64,9 +64,14 @@ sensors:
 
   # hwmon: Path to a complete driver folder
   # =======================================
-  # Individual sensors need to be picked out with the "indices:" keyword.
-  # This can be used with a stable path that does not depend on driver load
-  # order. However certain drivers may not appear under such a stable path.
+  # "indices:" may be supplied to explicitly select and order inputs. If it
+  # is omitted for an identified hwmon driver directory, thinkfan discovers
+  # all matching tempN_input files and orders them by numeric index.
+  # Omitting it is convenient when all exposed inputs are intended for
+  # control; use explicit indices when only selected sensors should
+  # participate. This can be used with a stable path that does not depend on
+  # driver load order. However certain drivers may not appear under such a
+  # stable path.
   - hwmon: /sys/devices/pci0000:00/0000:00:03.1/0000:27:00.0/hwmon
     indices: [1, 2, 5, 6] # adds 4 temperature sensors
     correction: [0, 0, 0, -5] # add -5 °C to temp6_input
