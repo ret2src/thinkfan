@@ -298,7 +298,7 @@ bool convert_driver<vector<wtf_ptr<HwmonFanDriver>>>(const Node &node, vector<wt
 		return false;
 
 	allowed_keywords(node, {
-		kw_hwmon, kw_name, kw_indices, kw_optional, kw_max_errors, kw_levels
+		kw_hwmon, kw_name, kw_model, kw_indices, kw_optional, kw_max_errors, kw_levels
 	});
 
 	string path = node[kw_hwmon].as<string>();

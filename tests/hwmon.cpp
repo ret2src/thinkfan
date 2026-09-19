@@ -287,6 +287,61 @@ void test_yaml_direct_input_path_creates_one_sensor_driver()
 	config->sensors().front()->read_temps();
 	CHECK((temperatures.temps() == vector<int>{42}));
 }
+
+void test_yaml_hwmon_fan_model_selector_and_keyword_validation()
+{
+	TemporaryDirectory directory;
+	directory.add_file("sensor/temp1_input", "41000\n");
+	directory.add_file("candidate/model", "some-model\n");
+	directory.add_file("candidate/pwm1", "0\n");
+	directory.add_file("candidate/pwm1_enable", "2\n");
+
+	directory.add_file("config.yaml",
+		"sensors:\n"
+		"  - hwmon: " + (directory.path() / "sensor").string() + "\n"
+		"    indices: [1]\n"
+		"fans:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    model: some-model\n"
+		"    indices: [1]\n"
+		"levels:\n"
+		"  - speed: 0\n"
+		"    upper_limit: 80\n"
+		"  - speed: 128\n"
+		"    lower_limit: 70\n"
+	);
+
+	std::unique_ptr<const Config> config(
+		Config::read_config({(directory.path() / "config.yaml").string()})
+	);
+	TemperatureState temperatures(0);
+	config->init(temperatures);
+	CHECK(config->fan_configs().size() == 1);
+	CHECK(config->fan_configs().front()->fan()->path()
+		== (directory.path() / "candidate/pwm1").string());
+
+	directory.add_file("unknown-keyword.yaml",
+		"sensors:\n"
+		"  - hwmon: " + (directory.path() / "sensor").string() + "\n"
+		"    indices: [1]\n"
+		"fans:\n"
+		"  - hwmon: " + directory.path().string() + "\n"
+		"    model: some-model\n"
+		"    indices: [1]\n"
+		"    unknown: true\n"
+		"levels:\n"
+		"  - speed: 0\n"
+		"    upper_limit: 80\n"
+		"  - speed: 128\n"
+		"    lower_limit: 70\n"
+	);
+	const string unknown_keyword_error = expect_error([&] {
+		std::unique_ptr<const Config> bad_config(
+			Config::read_config({(directory.path() / "unknown-keyword.yaml").string()})
+		);
+	});
+	CHECK(unknown_keyword_error.find("Invalid keyword") != string::npos);
+}
 #endif
 
 void test_explicit_indices_preserve_order()
@@ -491,6 +546,7 @@ int main()
 	test_yaml_automatic_discovery_expands_sensor_drivers();
 	test_yaml_automatic_discovery_expands_fan_drivers();
 	test_yaml_direct_input_path_creates_one_sensor_driver();
+	test_yaml_hwmon_fan_model_selector_and_keyword_validation();
 	#endif
 	test_explicit_indices_preserve_order();
 	test_explicit_no_match_recurses_into_hwmon_directory();
