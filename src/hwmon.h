@@ -44,12 +44,14 @@ public:
 private:
 	void resolve_paths();
 	static int filter_driver_file(const struct dirent *entry);
+	static bool has_name_file(const string &path);
 	static opt<unsigned int> index_from_filename(const string &filename);
 	static string driver_file_pattern();
 	static vector<string> find_files(const string &path, const vector<unsigned int> &indices);
 	static string filename(unsigned int index);
 
 	static vector<string> find_hwmons_by_model(const string &path, const string &model, unsigned char depth);
+	static vector<string> filter_hwmons_by_model(const vector<string> &paths, const string &model);
 	static vector<string> find_hwmons_by_name(const string &path, const string &name, unsigned char depth);
 	static vector<string> find_hwmons_by_indices(const string &path, const vector<unsigned int> &indices, unsigned char depth);
 

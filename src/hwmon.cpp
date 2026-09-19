@@ -85,6 +85,24 @@ static int filter_subdirs(const struct dirent *entry)
 }
 
 
+static bool model_file_matches(const filesystem::path &path, const string &model)
+{
+	for (const filesystem::path &model_path : {path / "model", path / "device" / "model"}) {
+		ifstream f(model_path);
+		if (!f.is_open() || !f.good())
+			continue;
+
+		string actual_model;
+		if (!getline(f, actual_model))
+			continue;
+		actual_model.erase(actual_model.find_last_not_of(" \t\n\r\f\v") + 1);
+		if (actual_model == model)
+			return true;
+	}
+	return false;
+}
+
+
 template<>
 opt<unsigned int> HwmonInterface<SensorDriver>::index_from_filename(const string &filename)
 { return parse_indexed_filename(filename, "temp", "_input"); }
@@ -133,6 +151,14 @@ vector<string> dir_entries(const filesystem::path &dir)
 	}
 	::free(entries);
 	return rv;
+}
+
+
+template<class HwmonT>
+bool HwmonInterface<HwmonT>::has_name_file(const string &path)
+{
+	ifstream f(path + "/name");
+	return f.is_open() && f.good();
 }
 
 
@@ -218,16 +244,9 @@ vector<string> HwmonInterface<HwmonT>::find_hwmons_by_model(
 	const unsigned char max_depth = 5;
 	vector<string> result;
 
-	ifstream f(path + "/model");
-	if (f.is_open() && f.good()) {
-		string tmp;
-		if (getline(f, tmp)) {
-			tmp = tmp.erase(tmp.find_last_not_of(" \t\n\r\f\v") + 1);
-			if (tmp == model) {
-				result.push_back(path);
-				return result;
-			}
-		}
+	if (HwmonInterface<HwmonT>::has_name_file(path) && model_file_matches(path, model)) {
+		result.push_back(path);
+		return result;
 	}
 	if (depth >= max_depth) {
 		return result; // don't recurse to subdirs
@@ -243,6 +262,20 @@ vector<string> HwmonInterface<HwmonT>::find_hwmons_by_model(
 		result.insert(result.end(), found.begin(), found.end());
 	}
 
+	return result;
+}
+
+
+template<class HwmonT>
+vector<string> HwmonInterface<HwmonT>::filter_hwmons_by_model(
+	const vector<string> &paths,
+	const string &model
+)
+{
+	vector<string> result;
+	for (const string &path : paths)
+		if (model_file_matches(path, model))
+			result.push_back(path);
 	return result;
 }
 
@@ -320,35 +353,37 @@ void HwmonInterface<HwmonT>::resolve_paths()
 
 		string path = *base_path_;
 
-		if (name_) {
-			vector<string> paths = find_hwmons_by_name(path, name_.value(), 1);
-			if (paths.size() != 1) {
-				string msg(path + ": ");
-				if (paths.size() == 0) {
-					msg += "Could not find an hwmon with this name: " + name_.value();
-				} else {
-					msg += MSG_MULTIPLE_HWMONS_FOUND;
-					for (string hwmon_path : paths)
-						msg += " " + hwmon_path;
-				}
-				throw DriverInitError(msg);
+		if (name_ || model_) {
+			vector<string> candidates = name_
+				? find_hwmons_by_name(path, name_.value(), 1)
+				: find_hwmons_by_model(path, model_.value(), 1);
+
+			if (name_ && model_)
+				candidates = filter_hwmons_by_model(candidates, model_.value());
+
+			string selectors;
+			if (name_)
+				selectors += "name \"" + name_.value() + "\"";
+			if (model_) {
+				if (!selectors.empty())
+					selectors += " and ";
+				selectors += "model \"" + model_.value() + "\"";
 			}
-			path = paths[0];
-		}
-		if (model_) {
-			vector<string> paths = find_hwmons_by_model(path, model_.value(), 1);
-			if (paths.size() != 1) {
-				string msg(path + ": ");
-				if (paths.size() == 0) {
-					msg += "Could not find a hwmon with this model: " + model_.value();
-				} else {
-					msg += MSG_MULTIPLE_HWMONS_FOUND;
-					for (string hwmon_path : paths)
-						msg += " " + hwmon_path;
-				}
-				throw DriverInitError(msg);
+
+			if (candidates.empty()) {
+				throw DriverInitError(
+					"No hwmon interface matches " + selectors + " below " + path + "."
+				);
 			}
-			path = paths[0];
+			if (candidates.size() > 1) {
+				vector<string> diagnostics = candidates;
+				std::sort(diagnostics.begin(), diagnostics.end());
+				string msg = "Multiple hwmon interfaces match " + selectors + " below " + path + ":";
+				for (const string &candidate : diagnostics)
+					msg += "\n  " + candidate;
+				throw ExpectedError(msg);
+			}
+			path = candidates.front();
 		}
 		if (indices_) {
 			found_paths_ = find_hwmons_by_indices(path, indices_.value(), 0);

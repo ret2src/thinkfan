@@ -150,6 +150,7 @@ section:
 
 \f[CB]  \- hwmon: \f[CI]hwmon-path
 \f[CB]    name: \f[CI]hwmon-name
+\f[CB]    model: \f[CI]hwmon-model\f[CR]         # Optional entry
 \f[CB]    indices: \f[CI]index-list        # Optional; auto-discover if omitted
 
 \f[CB]  \- \f[CR]...
@@ -234,6 +235,31 @@ Here, the \*(lq\c
 \*(rq entry is optional; when omitted, matching inputs are discovered in numeric
 index order. Explicit indices are returned in the order written.
 
+When both \*(lq\c
+.BI name:
+\*(rq and \*(lq\c
+.BI model:
+\*(rq are present, both must match the same hwmon interface. Uniqueness is
+checked only after all configured selectors have been applied. For example,
+this is useful when multiple NVMe interfaces expose the same name:
+
+.nf
+\fC
+sensors:
+  \- hwmon: /sys/class/hwmon
+    name: nvme
+    model: WD_BLACK SN770 1TB
+    indices: [1]
+\fR
+.fi
+
+If multiple interfaces still have the same configured name and model,
+thinkfan reports the matching interfaces and refuses to choose one
+automatically. The \*(lq\c
+.BI indices:
+\*(rq entry selects inputs within an already identified interface; it does not
+disambiguate hwmon interfaces.
+
 .RE
 .TP
 .I hwmon-name
@@ -247,11 +273,18 @@ of the driver modules.
 
 .TP
 .I hwmon-model
-The model of a device in a hwmon interface usually found for NVME devices in a 
-file under \*(lqdevice\*(rq called \*(lqmodel\*(rq.
+The model of a device in a hwmon interface. Thinkfan checks the interface's
+\*(lqmodel\*(rq file and its associated \*(lqdevice/model\*(rq file, using the
+whole line as the model value after trimming trailing whitespace. If the model
+is found under \*(lqdevice\*(rq, the selected root remains the hwmon interface,
+so subsequent input and PWM lookup stays relative to that interface.
+Model files in unrelated nested objects are not considered.
 For example, you might have an NVME \*(lq/sys/class/hwmon/hwmon3/device/model\*(rq
 and you might have an external NVME over USB or Thunderbolt that you don't want
 to monitor or you might have two NVME's.
+
+If multiple devices have the same name and the same model, the configuration
+remains ambiguous and thinkfan refuses to choose one automatically.
 
 .TP
 .I index-list

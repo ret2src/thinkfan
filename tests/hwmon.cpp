@@ -75,6 +75,22 @@ vector<string> lookup_all(
 	return interface.lookup_all();
 }
 
+
+void add_hwmon(
+	TemporaryDirectory &directory,
+	const string &relative_path,
+	const string &name,
+	const string &model,
+	const vector<string> &inputs = {"temp1_input"}
+)
+{
+	directory.add_file(relative_path + "/name", name + "\n");
+	directory.add_file(relative_path + "/device/model", model + "\n");
+	for (const string &input : inputs)
+		directory.add_file(relative_path + "/" + input);
+}
+
+
 template<class Fn>
 string expect_error(Fn &&fn)
 {
@@ -292,6 +308,7 @@ void test_yaml_hwmon_fan_model_selector_and_keyword_validation()
 {
 	TemporaryDirectory directory;
 	directory.add_file("sensor/temp1_input", "41000\n");
+	directory.add_file("candidate/name", "some-fan\n");
 	directory.add_file("candidate/model", "some-model\n");
 	directory.add_file("candidate/pwm1", "0\n");
 	directory.add_file("candidate/pwm1_enable", "2\n");
@@ -341,6 +358,53 @@ void test_yaml_hwmon_fan_model_selector_and_keyword_validation()
 		);
 	});
 	CHECK(unknown_keyword_error.find("Invalid keyword") != string::npos);
+}
+
+
+void test_yaml_compound_identity_for_fans_is_key_order_independent()
+{
+	TemporaryDirectory directory;
+	directory.add_file("sensor/temp1_input", "41000\n");
+	directory.add_file("hwmon0/name", "nvme\n");
+	directory.add_file("hwmon0/device/model", "Samsung SSD 990 PRO 2TB\n");
+	directory.add_file("hwmon0/pwm1", "0\n");
+	directory.add_file("hwmon0/pwm1_enable", "2\n");
+	directory.add_file("hwmon1/name", "nvme\n");
+	directory.add_file("hwmon1/device/model", "WD_BLACK SN770 1TB\n");
+	directory.add_file("hwmon1/pwm1", "0\n");
+	directory.add_file("hwmon1/pwm1_enable", "2\n");
+
+	const auto config_text = [&](bool model_first) {
+		return string(
+			"sensors:\n"
+			"  - hwmon: "
+		) + (directory.path() / "sensor/temp1_input").string() + "\n"
+			+ "fans:\n"
+			+ "  - hwmon: " + directory.path().string() + "\n"
+			+ (model_first
+				? "    model: WD_BLACK SN770 1TB\n    name: nvme\n"
+				: "    name: nvme\n    model: WD_BLACK SN770 1TB\n")
+			+ "    indices: [1]\n"
+			+ "levels:\n"
+			+ "  - speed: 0\n"
+			+ "    upper_limit: 80\n"
+			+ "  - speed: 128\n"
+			+ "    lower_limit: 70\n";
+	};
+
+	for (const bool model_first : {false, true}) {
+		const string config_name = model_first ? "model-first.yaml" : "name-first.yaml";
+		directory.add_file("hwmon1/pwm1_enable", "2\n");
+		directory.add_file(config_name, config_text(model_first));
+		std::unique_ptr<const Config> config(
+			Config::read_config({(directory.path() / config_name).string()})
+		);
+		TemperatureState temperatures(0);
+		config->init(temperatures);
+		CHECK(config->fan_configs().size() == 1);
+		CHECK(config->fan_configs().front()->fan()->path()
+			== (directory.path() / "hwmon1/pwm1").string());
+	}
 }
 #endif
 
@@ -461,7 +525,7 @@ void test_name_lookup_and_ambiguity_errors()
 		);
 		interface.lookup();
 	});
-	CHECK(missing_error.find("Could not find an hwmon with this name: missing") != string::npos);
+	CHECK(missing_error.find("No hwmon interface matches name \"missing\"") != string::npos);
 
 	TemporaryDirectory ambiguous_directory;
 	ambiguous_directory.add_file("hwmon0/name", "coretemp\n");
@@ -472,13 +536,17 @@ void test_name_lookup_and_ambiguity_errors()
 		);
 		interface.lookup();
 	});
-	CHECK(multiple_error.find("Found multiple hwmons with this name") != string::npos);
+	CHECK(multiple_error.find("Multiple hwmon interfaces match name \"coretemp\"") != string::npos);
+	CHECK(multiple_error.find((ambiguous_directory.path() / "hwmon0").string()) != string::npos);
+	CHECK(multiple_error.find((ambiguous_directory.path() / "hwmon1").string()) != string::npos);
 }
 
 void test_model_lookup_and_ambiguity_errors()
 {
 	TemporaryDirectory directory;
+	directory.add_file("hwmon0/name", "other\n");
 	directory.add_file("hwmon0/model", "unrelated\n");
+	directory.add_file("hwmon1/name", "nvme\n");
 	directory.add_file("hwmon1/model", "NVMe Composite\n");
 	directory.add_file("hwmon1/temp10_input");
 	directory.add_file("hwmon1/temp1_input");
@@ -496,19 +564,233 @@ void test_model_lookup_and_ambiguity_errors()
 		);
 		interface.lookup();
 	});
-	CHECK(missing_error.find("Could not find a hwmon with this model: missing") != string::npos);
+	CHECK(missing_error.find("No hwmon interface matches model \"missing\"") != string::npos);
 
 	TemporaryDirectory ambiguous_directory;
+	ambiguous_directory.add_file("hwmon0/name", "nvme\n");
 	ambiguous_directory.add_file("hwmon0/model", "NVMe Composite\n");
+	ambiguous_directory.add_file("hwmon0/temp1_input");
+	ambiguous_directory.add_file("hwmon1/name", "nvme\n");
 	ambiguous_directory.add_file("hwmon1/model", "NVMe Composite\n");
+	ambiguous_directory.add_file("hwmon1/temp1_input");
 	const string multiple_error = expect_error([&] {
 		HwmonInterface<SensorDriver> interface(
 			ambiguous_directory.path().string(), nullopt, model, nullopt
 		);
 		interface.lookup();
 	});
-	CHECK(multiple_error.find("Found multiple hwmons with this name") != string::npos);
+	CHECK(multiple_error.find("Multiple hwmon interfaces match model \"NVMe Composite\"") != string::npos);
+	CHECK(multiple_error.find((ambiguous_directory.path() / "hwmon0").string()) != string::npos);
+	CHECK(multiple_error.find((ambiguous_directory.path() / "hwmon1").string()) != string::npos);
 }
+
+
+void test_model_lookup_ignores_unrelated_nested_model()
+{
+	TemporaryDirectory directory;
+	directory.add_file("unrelated/model", "Unrelated Object\n");
+	directory.add_file("unrelated/temp1_input");
+
+	const string error = expect_error([&] {
+		lookup_all<SensorDriver>(
+			directory.path(), nullopt, opt<const string>{string("Unrelated Object")}, vector<unsigned int>{1}
+		);
+	});
+	CHECK(error.find("No hwmon interface matches model \"Unrelated Object\"") != string::npos);
+}
+
+
+void test_compound_name_and_model_selects_one_hwmon()
+{
+	TemporaryDirectory directory;
+	directory.add_file("hwmon0/name", "nvme\n");
+	directory.add_file("hwmon0/device/model", "Samsung SSD 990 PRO 2TB\n");
+	directory.add_file("hwmon0/temp1_input");
+	directory.add_file("hwmon1/name", "nvme\n");
+	directory.add_file("hwmon1/device/model", "WD_BLACK SN770 1TB\n");
+	directory.add_file("hwmon1/temp1_input");
+
+	const vector<string> paths = lookup_all<SensorDriver>(
+		directory.path(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("WD_BLACK SN770 1TB")},
+		vector<unsigned int>{1}
+	);
+	CHECK((paths == vector<string>{
+		(directory.path() / "hwmon1/temp1_input").string()
+	}));
+}
+
+
+void test_compound_identity_matrix()
+{
+	TemporaryDirectory directory;
+	add_hwmon(directory, "hwmon0", "nvme", "Samsung SSD 990 PRO 2TB");
+	add_hwmon(directory, "hwmon1", "nvme", "WD_BLACK SN770 1TB");
+
+	const string name_only_error = expect_error([&] {
+		lookup_all<SensorDriver>(
+			directory.path(), opt<const string>{string("nvme")}, nullopt, vector<unsigned int>{1}
+		);
+	});
+	CHECK(name_only_error.find("Multiple hwmon interfaces match name \"nvme\"") != string::npos);
+
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("Samsung SSD 990 PRO 2TB")},
+		vector<unsigned int>{1}
+	) == vector<string>{(directory.path() / "hwmon0/temp1_input").string()}));
+
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("WD_BLACK SN770 1TB")},
+		vector<unsigned int>{1}
+	) == vector<string>{(directory.path() / "hwmon1/temp1_input").string()}));
+
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(),
+		nullopt,
+		opt<const string>{string("WD_BLACK SN770 1TB")},
+		vector<unsigned int>{1}
+	) == vector<string>{(directory.path() / "hwmon1/temp1_input").string()}));
+
+	const string missing_model_error = expect_error([&] {
+		lookup_all<SensorDriver>(
+			directory.path(),
+			opt<const string>{string("nvme")},
+			opt<const string>{string("Imaginary Drive")},
+			vector<unsigned int>{1}
+		);
+	});
+	CHECK(missing_model_error.find(
+		"No hwmon interface matches name \"nvme\" and model \"Imaginary Drive\""
+	) != string::npos);
+
+	const string wrong_name_error = expect_error([&] {
+		lookup_all<SensorDriver>(
+			directory.path(),
+			opt<const string>{string("coretemp")},
+			opt<const string>{string("WD_BLACK SN770 1TB")},
+			vector<unsigned int>{1}
+		);
+	});
+	CHECK(wrong_name_error.find(
+		"No hwmon interface matches name \"coretemp\" and model \"WD_BLACK SN770 1TB\""
+	) != string::npos);
+}
+
+
+void test_identical_compound_identity_remains_ambiguous()
+{
+	TemporaryDirectory directory;
+	add_hwmon(directory, "hwmon0", "nvme", "Same Model");
+	add_hwmon(directory, "hwmon1", "nvme", "Same Model");
+
+	const auto expect_ambiguity = [&](const vector<unsigned int> &indices) {
+		const string error = expect_error([&] {
+			lookup_all<SensorDriver>(
+				directory.path(),
+				opt<const string>{string("nvme")},
+				opt<const string>{string("Same Model")},
+				indices
+			);
+		});
+		CHECK(error.find("Multiple hwmon interfaces match name \"nvme\" and model \"Same Model\"") != string::npos);
+		CHECK(error.find((directory.path() / "hwmon0").string()) != string::npos);
+		CHECK(error.find((directory.path() / "hwmon1").string()) != string::npos);
+		return error;
+	};
+
+	expect_ambiguity({});
+	expect_ambiguity({1});
+	expect_ambiguity({2, 1});
+}
+
+
+void test_final_cardinality_does_not_select_first_candidate()
+{
+	TemporaryDirectory directory;
+	add_hwmon(directory, "hwmon0", "coretemp", "CPU");
+	add_hwmon(directory, "hwmon1", "coretemp", "CPU");
+	add_hwmon(directory, "hwmon2", "coretemp", "CPU");
+
+	const string error = expect_error([&] {
+		lookup_all<SensorDriver>(
+			directory.path(), opt<const string>{string("coretemp")}, nullopt, vector<unsigned int>{1}
+		);
+	});
+	CHECK(error.find("Multiple hwmon interfaces match name \"coretemp\"") != string::npos);
+	CHECK(error.find((directory.path() / "hwmon0").string()) != string::npos);
+	CHECK(error.find((directory.path() / "hwmon1").string()) != string::npos);
+	CHECK(error.find((directory.path() / "hwmon2").string()) != string::npos);
+}
+
+
+void test_compound_identity_preserves_input_order_and_discovery_order()
+{
+	TemporaryDirectory directory;
+	add_hwmon(directory, "hwmon0", "nvme", "Samsung SSD 990 PRO 2TB");
+	add_hwmon(
+		directory,
+		"hwmon1",
+		"nvme",
+		"WD_BLACK SN770 1TB",
+		{"temp10_input", "temp2_input", "temp1_input"}
+	);
+
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("WD_BLACK SN770 1TB")},
+		vector<unsigned int>{2, 1}
+	) == vector<string>{
+		(directory.path() / "hwmon1/temp2_input").string(),
+		(directory.path() / "hwmon1/temp1_input").string()
+	}));
+
+	CHECK((lookup_all<SensorDriver>(
+		directory.path(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("WD_BLACK SN770 1TB")}
+	) == vector<string>{
+		(directory.path() / "hwmon1/temp1_input").string(),
+		(directory.path() / "hwmon1/temp2_input").string(),
+		(directory.path() / "hwmon1/temp10_input").string()
+	}));
+}
+
+
+void test_optional_compound_identity_keeps_ambiguity_fatal()
+{
+	TemporaryDirectory missing_directory;
+	add_hwmon(missing_directory, "hwmon0", "nvme", "WD_BLACK SN770 1TB");
+	auto missing_interface = std::make_shared<HwmonInterface<SensorDriver>>(
+		missing_directory.path().string(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("Imaginary Drive")},
+		vector<unsigned int>{1}
+	);
+	HwmonSensorDriver missing_driver(missing_interface, true);
+	missing_driver.try_init();
+	CHECK(!missing_driver.initialized());
+	CHECK(!missing_driver.available());
+
+	TemporaryDirectory ambiguous_directory;
+	add_hwmon(ambiguous_directory, "hwmon0", "nvme", "Same Model");
+	add_hwmon(ambiguous_directory, "hwmon1", "nvme", "Same Model");
+	auto ambiguous_interface = std::make_shared<HwmonInterface<SensorDriver>>(
+		ambiguous_directory.path().string(),
+		opt<const string>{string("nvme")},
+		opt<const string>{string("Same Model")},
+		vector<unsigned int>{1}
+	);
+	HwmonSensorDriver ambiguous_driver(ambiguous_interface, true);
+	const string ambiguity_error = expect_error([&] { ambiguous_driver.try_init(); });
+	CHECK(ambiguity_error.find("Multiple hwmon interfaces match") != string::npos);
+}
+
 
 void test_recursive_lookup_inspects_directory_candidates()
 {
@@ -547,12 +829,20 @@ int main()
 	test_yaml_automatic_discovery_expands_fan_drivers();
 	test_yaml_direct_input_path_creates_one_sensor_driver();
 	test_yaml_hwmon_fan_model_selector_and_keyword_validation();
+	test_yaml_compound_identity_for_fans_is_key_order_independent();
 	#endif
 	test_explicit_indices_preserve_order();
 	test_explicit_no_match_recurses_into_hwmon_directory();
 	test_explicit_partial_match_is_order_independent();
 	test_name_lookup_and_ambiguity_errors();
 	test_model_lookup_and_ambiguity_errors();
+	test_model_lookup_ignores_unrelated_nested_model();
+	test_compound_name_and_model_selects_one_hwmon();
+	test_compound_identity_matrix();
+	test_identical_compound_identity_remains_ambiguous();
+	test_final_cardinality_does_not_select_first_candidate();
+	test_compound_identity_preserves_input_order_and_discovery_order();
+	test_optional_compound_identity_keeps_ambiguity_fatal();
 	test_recursive_lookup_inspects_directory_candidates();
 	return 0;
 }
