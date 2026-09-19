@@ -263,6 +263,48 @@ void test_long_gap_resets_temporal_state()
 	CHECK(fixture.fan_ptr->commands.back() == "level 1");
 }
 
+void test_explicit_reset_discards_upward_qualification()
+{
+	const auto previous_sleeptime = sleeptime;
+	sleeptime = seconds(1000);
+
+	SimpleFixture fixture(seconds(10), seconds(20));
+	fixture.init(75);
+	const Time t0{};
+
+	CHECK(!fixture.update(105, t0 + seconds(10)));
+	CHECK(!fixture.update(105, t0 + seconds(18)));
+	fixture.mapping.reset_temporal_state();
+
+	CHECK(!fixture.update(105, t0 + seconds(1000)));
+	CHECK(!fixture.update(105, t0 + seconds(1009)));
+	CHECK(fixture.update(105, t0 + seconds(1010)));
+	CHECK(fixture.fan_ptr->commands.back() == "level 2");
+
+	sleeptime = previous_sleeptime;
+}
+
+void test_explicit_reset_discards_downward_state_and_timestamp()
+{
+	const auto previous_sleeptime = sleeptime;
+	sleeptime = seconds(1000);
+
+	SimpleFixture fixture(seconds(10), seconds(20));
+	fixture.init(75);
+	const Time t0{};
+
+	CHECK(!fixture.update(69, t0 + seconds(10)));
+	CHECK(!fixture.update(69, t0 + seconds(18)));
+	fixture.mapping.reset_temporal_state();
+
+	CHECK(!fixture.update(69, t0 + seconds(1000)));
+	CHECK(!fixture.update(69, t0 + seconds(1019)));
+	CHECK(fixture.update(69, t0 + seconds(1020)));
+	CHECK(fixture.fan_ptr->commands.back() == "level 0");
+
+	sleeptime = previous_sleeptime;
+}
+
 void test_zero_delay_is_immediate()
 {
 	SimpleFixture fixture(seconds(0), seconds(0));
@@ -411,6 +453,8 @@ int main()
 	test_upward_transition_clears_downward_state();
 	test_emergency_discards_temporal_state();
 	test_long_gap_resets_temporal_state();
+	test_explicit_reset_discards_upward_qualification();
+	test_explicit_reset_discards_downward_state_and_timestamp();
 	test_zero_delay_is_immediate();
 	test_legacy_jump();
 	test_complex_levels_preserve_zone_semantics();
